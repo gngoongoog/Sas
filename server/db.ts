@@ -47,7 +47,7 @@ export function decrypt(text: string): string {
     decrypted = Buffer.concat([decrypted, decipher.final()]);
     return decrypted.toString();
   } catch (error) {
-    console.error('Decryption failed:', error);
+    // Return original string gracefully if decryption key differs without leaking stack traces
     return text;
   }
 }

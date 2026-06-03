@@ -589,6 +589,58 @@ async function startServer() {
     }
   });
 
+  // POST /api/whatsapp/send
+  app.post('/api/whatsapp/send', async (req, res) => {
+    try {
+      const { phone, message, gatewayUrl } = req.body;
+      if (!phone || !message || !gatewayUrl) {
+        return res.status(400).json({ error: 'الحقول المطلوبة مفقودة (phone, message, gatewayUrl).' });
+      }
+
+      // Format Iraqi numbers securely to standard international formats
+      let cleanPhone = phone.replace(/[^0-9]/g, '');
+      if (cleanPhone.startsWith('07')) {
+        cleanPhone = '964' + cleanPhone.substring(1);
+      } else if (cleanPhone.startsWith('7')) {
+        cleanPhone = '964' + cleanPhone;
+      }
+
+      // Interpolate url with phone and message
+      const targetUrl = gatewayUrl
+        .replace(/{phone}/g, encodeURIComponent(cleanPhone))
+        .replace(/{number}/g, encodeURIComponent(cleanPhone))
+        .replace(/{message}/g, encodeURIComponent(message))
+        .replace(/{msg}/g, encodeURIComponent(message));
+
+      // Fire external HTTP request safely with absolute 8-sec timeout to prevent thread blocking
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+      try {
+        const response = await fetch(targetUrl, {
+          method: 'GET',
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
+        const responseText = await response.text();
+        if (response.ok) {
+          logToSql('system', 'success', `تم إرسال تنبيه WhatsApp بنجاح للرقم ${phone}`, `الاستجابة: ${responseText.substring(0, 100)}`);
+          res.json({ success: true, response: responseText });
+        } else {
+          logToSql('system', 'error', `فشل إرسال تنبيه WhatsApp للرقم ${phone}`, `حالة الاستجابة: ${response.status} - ${responseText.substring(0, 100)}`);
+          res.status(502).json({ error: `بوابة الرسائل رجعت بحالة خطأ: ${response.status}`, details: responseText });
+        }
+      } catch (err: any) {
+        clearTimeout(timeoutId);
+        logToSql('system', 'error', `خطأ في الاتصال ببوابة WhatsApp للرقم ${phone}`, err.message);
+        res.status(504).json({ error: 'انتهت مهلة الطلب أو حدث خطأ أثناء الاتصال بالبوابة الخارجية.', details: err.message });
+      }
+    } catch (error: any) {
+      res.status(500).json({ error: 'عطل داخلي في خادم الإرسال.', details: error.message });
+    }
+  });
+
   // ==========================================
   // ⚙️ REAL-TIME MIKROTIK ROUTEROS API INTEGRATION
   // ==========================================

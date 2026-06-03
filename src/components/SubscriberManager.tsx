@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSystem } from '../context/SystemContext';
 import { Subscriber } from '../types';
 import { 
@@ -26,7 +26,15 @@ import {
   UploadCloud,
   Check,
   RefreshCw,
-  Sliders
+  Sliders,
+  MessageSquare,
+  ExternalLink,
+  Settings,
+  Eye,
+  EyeOff,
+  AlertTriangle,
+  Info,
+  Send
 } from 'lucide-react';
 
 export const SubscriberManager: React.FC = () => {
@@ -58,6 +66,135 @@ export const SubscriberManager: React.FC = () => {
   const [csvPasteData, setCsvPasteData] = useState('');
   const [importStatus, setImportStatus] = useState('');
 
+  // WhatsApp Notification wizard states
+  const { token } = useSystem();
+  const [whatsappModalOpen, setWhatsappModalOpen] = useState(false);
+  const [whatsappTemplate, setWhatsappTemplate] = useState('أهلاً بك عزيزي العميل {fullName}.\nنود تذكيرك بقرب انتهاء اشتراكك في باقة {profileName} (اسم المستخدم: {username}).\nتاريخ انتهاء الاشتراك: {expiryDate}\nالمتبقي لانتهاء الخدمة: {daysLeft} أيام.\nالمبلغ المطلوب للتجديد: {price}.\nيرجى تعبئة الرصيد لتفادي فصل الخدمة. شكراً لاختيارك لنا! ❤️');
+  const [whatsappMethod, setWhatsappMethod] = useState<'url_scheme' | 'http_api'>('url_scheme');
+  const [whatsappGatewayUrl, setWhatsappGatewayUrl] = useState('https://api.ultramsg.com/instanceXXXXX/messages/chat?token=YOUR_TOKEN&to={phone}&body={message}');
+  const [whatsappApiLogs, setWhatsappApiLogs] = useState<{
+    name: string;
+    username: string;
+    phone: string;
+    subscriber: any;
+    status: 'idle' | 'sending' | 'success' | 'error';
+    message?: string;
+  }[]>([]);
+  const [whatsappSendingInProgress, setWhatsappSendingInProgress] = useState(false);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+
+  // Load saved WhatsApp configurations from SQLite settings DB
+  const loadWhatsAppSettings = async () => {
+    if (!token) return;
+    try {
+      const res = await fetch('/api/settings', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.whatsapp_template) setWhatsappTemplate(data.whatsapp_template);
+        if (data.whatsapp_method) setWhatsappMethod(data.whatsapp_method as 'url_scheme' | 'http_api');
+        if (data.whatsapp_gateway_url) setWhatsappGatewayUrl(data.whatsapp_gateway_url);
+        setSettingsLoaded(true);
+      }
+    } catch (e) {
+      console.error('Failed to load WhatsApp settings:', e);
+    }
+  };
+
+  // Persist WhatsApp configs in SQLite settings DB
+  const saveWhatsAppSettings = async (template: string, method: string, gatewayUrl: string) => {
+    if (!token) return;
+    try {
+      await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          settings: {
+            whatsapp_template: template,
+            whatsapp_method: method,
+            whatsapp_gateway_url: gatewayUrl
+          }
+        })
+      });
+    } catch (e) {
+      console.error('Failed to save WhatsApp settings:', e);
+    }
+  };
+
+  // Helper function to draft personalized messages dynamically
+  const generateWhatsAppMessage = (sub: Subscriber, templateText: string) => {
+    const profile = profiles.find(p => p.id === sub.profileId);
+    const router = routers.find(r => r.id === sub.routerId);
+    
+    const expDate = new Date(sub.expiryDate);
+    const daysLeft = Math.max(0, Math.ceil((expDate.getTime() - Date.now()) / (1000 * 3600 * 24)));
+    const priceFormatted = profile ? formatPrice(profile.price) : '0';
+
+    return templateText
+      .replace(/{fullName}/g, sub.fullName)
+      .replace(/{name}/g, sub.fullName)
+      .replace(/{username}/g, sub.username)
+      .replace(/{phone}/g, sub.phone || '')
+      .replace(/{profileName}/g, profile?.name || 'الافتراضية')
+      .replace(/{packageName}/g, profile?.name || 'الافتراضية')
+      .replace(/{expiryDate}/g, expDate.toLocaleDateString('ar-IQ'))
+      .replace(/{daysLeft}/g, String(daysLeft))
+      .replace(/{price}/g, priceFormatted)
+      .replace(/{routerName}/g, router?.name || 'سيرفر تلقائي');
+  };
+
+  // Sequentially send automated gateway updates with CORS protection proxy
+  const runHttpWhatsappBulkSend = async () => {
+    if (whatsappSendingInProgress) return;
+    setWhatsappSendingInProgress(true);
+
+    // Persist current settings instantly
+    await saveWhatsAppSettings(whatsappTemplate, whatsappMethod, whatsappGatewayUrl);
+
+    // Queue of entries with non-empty phones that aren't already sent successfully
+    const queue = whatsappApiLogs.filter(log => log.phone && log.status !== 'success');
+    
+    for (const item of queue) {
+      // Mark as sending
+      setWhatsappApiLogs(prev => prev.map(log => log.username === item.username ? { ...log, status: 'sending' } : log));
+      
+      const draftMessage = generateWhatsAppMessage(item.subscriber, whatsappTemplate);
+      
+      try {
+        const response = await fetch('/api/whatsapp/send', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            phone: item.phone,
+            message: draftMessage,
+            gatewayUrl: whatsappGatewayUrl
+          })
+        });
+
+        if (response.ok) {
+          setWhatsappApiLogs(prev => prev.map(log => log.username === item.username ? { ...log, status: 'success', message: 'تم الإرسال بنجاح' } : log));
+        } else {
+          const errData = await response.json();
+          setWhatsappApiLogs(prev => prev.map(log => log.username === item.username ? { ...log, status: 'error', message: errData.error || 'فشل الإرسال' } : log));
+        }
+      } catch (err: any) {
+        setWhatsappApiLogs(prev => prev.map(log => log.username === item.username ? { ...log, status: 'error', message: err.message || 'خطأ اتصال بالشبكة' } : log));
+      }
+      
+      // Spacing throttle flow (500ms) to bypass remote gate limits
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    setWhatsappSendingInProgress(false);
+  };
+
   // Advanced CSV Import States
   const [previewRows, setPreviewRows] = useState<any[]>([]);
   const [filterPreviewStatus, setFilterPreviewStatus] = useState<'all' | 'valid' | 'invalid'>('all');
@@ -78,7 +215,21 @@ export const SubscriberManager: React.FC = () => {
       return;
     }
 
-    if (bulkAction === 'delete') {
+    if (bulkAction === 'whatsapp') {
+      const initialLogs = selectedSubIds.map(id => {
+        const sub = subscribers.find(s => s.id === id);
+        return {
+          name: sub?.fullName || '',
+          username: sub?.username || '',
+          phone: sub?.phone || '',
+          subscriber: sub,
+          status: 'idle' as const
+        };
+      });
+      setWhatsappApiLogs(initialLogs);
+      setWhatsappModalOpen(true);
+      loadWhatsAppSettings();
+    } else if (bulkAction === 'delete') {
       if (confirm(`هل أنت متأكد من حذف ${selectedSubIds.length} مستخدم جماعياً؟ سيتم إنهاء كافة جلساتهم وممخطط الأيبات.`)) {
         selectedSubIds.forEach(id => deleteSubscriber(id));
         setSelectedSubIds([]);
@@ -512,7 +663,7 @@ export const SubscriberManager: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [profileFilter, setProfileFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [quickTab, setQuickTab] = useState<'all' | 'active' | 'expired' | 'connected' | 'expired_29_plus'>('all');
+  const [quickTab, setQuickTab] = useState<'all' | 'active' | 'expired' | 'connected' | 'expired_29_plus' | 'expiring_3_days'>('all');
 
   // Modals controllers
   const [addModalOpen, setAddModalOpen] = useState(false);
@@ -698,6 +849,7 @@ export const SubscriberManager: React.FC = () => {
   // Filtration logic
   const now = new Date();
   const twentyNineDaysInMs = 29 * 24 * 60 * 60 * 1000;
+  const threeDaysInMs = 3 * 24 * 60 * 60 * 1000;
 
   const filteredSubscribers = subscribers.filter(sub => {
     const matchesSearch = 
@@ -718,6 +870,10 @@ export const SubscriberManager: React.FC = () => {
     } else if (quickTab === 'expired_29_plus') {
       const expDate = new Date(sub.expiryDate);
       matchesTab = (sub.status === 'expired') && (now.getTime() - expDate.getTime() > twentyNineDaysInMs);
+    } else if (quickTab === 'expiring_3_days') {
+      const expDate = new Date(sub.expiryDate);
+      const timeLeft = expDate.getTime() - now.getTime();
+      matchesTab = (sub.status === 'active') && (timeLeft > 0) && (timeLeft <= threeDaysInMs);
     }
 
     return matchesSearch && matchesProfile && matchesStatus && matchesTab;
@@ -851,6 +1007,7 @@ export const SubscriberManager: React.FC = () => {
                     className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg cursor-pointer font-sans"
                   >
                     <option value="">-- حدد إجراءً موحداً --</option>
+                    <option value="whatsapp">إرسال تنبيه انتهاء الاشتراك (واتساب) 💬</option>
                     <option value="renew">تجديد الاشتراك جماعياً (نقداً)</option>
                     <option value="profile">تغيير الباقة والسرعة جماعياً</option>
                     <option value="toggle">عكس الحالة (تمكين/حظر) جماعياً</option>
@@ -1246,7 +1403,7 @@ export const SubscriberManager: React.FC = () => {
       )}
 
       {/* لوحة عرض وفرز الحالات السريعة (المنتهين، الفعالين، المتصلين، متأخرين) */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
         {/* جميع المشتركين */}
         <button
           type="button"
@@ -1371,6 +1528,35 @@ export const SubscriberManager: React.FC = () => {
             }).length}
           </div>
           <div className={`text-[10px] .truncate mt-1 ${quickTab === 'expired_29_plus' ? 'text-rose-200' : 'text-slate-400'}`}>تحفيز عودة العملاء المتأخرين</div>
+        </button>
+
+        {/* سينتهون خلال 3 أيام */}
+        <button
+          type="button"
+          onClick={() => {
+            setQuickTab('expiring_3_days');
+            setStatusFilter('all');
+          }}
+          className={`p-4 col-span-2 md:col-span-1 rounded-xl border text-right transition-all cursor-pointer relative overflow-hidden select-none ${
+            quickTab === 'expiring_3_days'
+              ? 'bg-amber-500 border-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
+              : 'bg-white border-slate-150 hover:border-slate-305 text-slate-800 shadow-xs hover:bg-slate-50'
+          }`}
+        >
+          <div className="flex justify-between items-start">
+            <span className={`text-[10.5px] font-bold ${quickTab === 'expiring_3_days' ? 'text-slate-900 font-black' : 'text-slate-450'}`}>سينتهون خلال 3 أيام</span>
+            <span className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-bold font-mono ${quickTab === 'expiring_3_days' ? 'bg-black/10 text-slate-900 font-extrabold' : 'bg-amber-50 text-amber-700'}`}>
+              WARN
+            </span>
+          </div>
+          <div className="text-2xl font-black font-mono mt-2">
+            {subscribers.filter(sub => {
+              const expDate = new Date(sub.expiryDate);
+              const timeLeft = expDate.getTime() - now.getTime();
+              return (sub.status === 'active') && (timeLeft > 0) && (timeLeft <= threeDaysInMs);
+            }).length}
+          </div>
+          <div className={`text-[10px] mt-1 ${quickTab === 'expiring_3_days' ? 'text-amber-950/70' : 'text-slate-400'}`}>تنبيه التجديد والاستكمال</div>
         </button>
       </div>
 
@@ -2076,6 +2262,350 @@ export const SubscriberManager: React.FC = () => {
               </div>
 
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* WHATSAPP BULK NOTIFICATION WIZARD MODAL */}
+      {whatsappModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 scroll-smooth">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-5xl w-full max-h-[90vh] flex flex-col text-right overflow-hidden animate-in zoom-in-95 duration-200" dir="rtl">
+            
+            {/* Modal Header */}
+            <div className="bg-slate-950 text-white p-5 flex justify-between items-center shrink-0">
+              <div className="space-y-1">
+                <h3 className="text-base font-black font-sans flex items-center gap-2">
+                  <span className="p-1 bg-emerald-500 text-slate-950 rounded-lg">
+                    <MessageSquare className="w-5 h-5 text-slate-950" />
+                  </span>
+                  معالج وتنبيهات انتهاء اشتراك المشتركين عبر WhatsApp جماعياً
+                </h3>
+                <p className="text-[11px] text-slate-450 font-sans">
+                  إعداد وصياغة الرسائل وبث خطابات تذكير الدفع الفوري لـ {whatsappApiLogs.length} مشتركين تم تحديدهم جماعياً.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setWhatsappModalOpen(false)}
+                className="p-1.5 bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors text-slate-300 font-bold font-sans text-xs cursor-pointer"
+              >
+                إغلاق المعالج ✕
+              </button>
+            </div>
+
+            {/* Modal Body Container (Scrollable) */}
+            <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 bg-slate-50/50">
+              
+              {/* Right Side Column (7 Cols on large): Draft and Settings */}
+              <div className="lg:col-span-7 space-y-6">
+                
+                {/* Mode Selector Tabs */}
+                <div className="bg-white rounded-xl border border-slate-200 p-1.5 flex gap-1.5 shadow-xs">
+                  <button
+                    type="button"
+                    onClick={() => setWhatsappMethod('url_scheme')}
+                    className={`flex-1 py-2 px-3 text-center text-xs font-bold rounded-lg cursor-pointer transition-all flex items-center justify-center gap-1.5 ${
+                      whatsappMethod === 'url_scheme'
+                        ? 'bg-emerald-50 text-emerald-900 border border-emerald-100'
+                        : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+                    }`}
+                  >
+                    💬 طريقة الإرسال المجانية المباشرة
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setWhatsappMethod('http_api')}
+                    className={`flex-1 py-2 px-3 text-center text-xs font-bold rounded-lg cursor-pointer transition-all flex items-center justify-center gap-1.5 ${
+                      whatsappMethod === 'http_api'
+                        ? 'bg-indigo-50 text-indigo-900 border border-indigo-100'
+                        : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+                    }`}
+                  >
+                    ⚡ استخدام بوابة إلكترونية تلقائية (API)
+                  </button>
+                </div>
+
+                {/* Main Settings Card */}
+                <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-4">
+                  
+                  {/* Explanation Block */}
+                  {whatsappMethod === 'url_scheme' ? (
+                    <div className="p-3 bg-emerald-50/60 border border-emerald-150 rounded-lg text-[11px] text-emerald-800 leading-relaxed font-sans">
+                      <b>💡 الطريقة المباشرة (رابط المتصفح اليدوي):</b> نقوم بتوليد رسائل مخصصة بالكامل لكل مشترك وتأطيرها بتصميمك أدناه. يوفر لك هذا الأسلوب زر "فتح وإرسال" لكل عميل يوجهك مباشرة لـ WhatsApp Web بمجرد ضغطة واحدة، مجاني بالكامل ولا يتطلب سيرفرات مكلفة!
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-indigo-50/60 border border-indigo-150 rounded-lg text-[11px] text-indigo-800 leading-relaxed font-sans">
+                      <b>💡 البوابة البرمجية التلقائية (Automation Gate):</b> تفويض نظام SuperSAS بالاتصال ببوابتك الخارجية (مثل UltraMsg، Twilio، أو Custom gateways) وتكليفه بإرسال الإشعارات دفعة واحدة في الخلفية بشكل متتابع وتوليد تقرير بالإرسال لحظة بلحظة.
+                    </div>
+                  )}
+
+                  {/* Settings Tab Navigation (Template / Gateway) */}
+                  <div className="border-b border-slate-100 pb-2 flex gap-3 text-xs font-bold">
+                    <button
+                      type="button"
+                      onClick={() => setSettingsLoaded(true)} // reuse state internally or toggle local settings tab
+                      className="text-slate-900 pb-1.5 border-b-2 border-slate-900"
+                    >
+                      صياغة رسالة تنبيه المشترك
+                    </button>
+                  </div>
+
+                  {/* Template Composer Form */}
+                  <div className="space-y-3 pt-1">
+                    <div className="flex justify-between items-center text-xs">
+                      <label className="font-bold text-slate-700">قالب محتوى رسالة التنبيه</label>
+                      <span className="text-[10px] text-slate-500 font-sans">يدعم الوسوم التفاعلية للمشتركين</span>
+                    </div>
+
+                    <textarea
+                      rows={5}
+                      value={whatsappTemplate}
+                      onChange={(e) => setWhatsappTemplate(e.target.value)}
+                      placeholder="اكتب رسالتك هنا..."
+                      className="w-full bg-slate-50/70 border border-slate-200 rounded-xl p-3 text-xs font-sans text-slate-800 focus:bg-white focus:ring-2 focus:ring-emerald-500/10 focus:border-emerald-500 transition-all outline-hidden leading-relaxed resize-y"
+                    />
+
+                    {/* Interactive variables badges bar */}
+                    <div className="space-y-1.5">
+                      <span className="block text-[10px] font-bold text-slate-500">اضغط على أي تاق لإدراجه تلقائياً داخل القالب:</span>
+                      <div className="flex flex-wrap gap-1.5 pt-0.5">
+                        {[
+                          { tag: '{fullName}', label: 'الاسم الكامل' },
+                          { tag: '{username}', label: 'يوزر PPPoE' },
+                          { tag: '{profileName}', label: 'باقة الاشتراك' },
+                          { tag: '{expiryDate}', label: 'تاريخ الانتهاء' },
+                          { tag: '{daysLeft}', label: 'الأيام المتبقية' },
+                          { tag: '{price}', label: 'السعر المستحق' },
+                          { tag: '{routerName}', label: 'اسم السيرفر' }
+                        ].map(variable => (
+                          <button
+                            key={variable.tag}
+                            type="button"
+                            onClick={() => setWhatsappTemplate(prev => prev + variable.tag)}
+                            className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md font-mono text-[10px] transition-all cursor-pointer font-bold border border-slate-150"
+                          >
+                            {variable.tag} ({variable.label})
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Gateway Configuration Fields (only if http_api) */}
+                  {whatsappMethod === 'http_api' && (
+                    <div className="border-t border-slate-100 pt-4 space-y-4 animate-in slide-in-from-top-3 duration-150">
+                      <div className="space-y-1">
+                        <h4 className="text-xs font-bold text-slate-800 font-sans">صياغة رابط بوابة الإرسال الخاصة بك (API Gateway URL)</h4>
+                        <p className="text-[10px] text-slate-400">استخدم الوسوم لمناطق الرقم والمسج وسيتكفل المشغل باستبدالها آلياً لكل مشترك.</p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="block text-[11px] font-bold text-slate-755">رابط الـ GET API البرمجي للبوابة</label>
+                        <input
+                          type="text"
+                          value={whatsappGatewayUrl}
+                          onChange={(e) => setWhatsappGatewayUrl(e.target.value)}
+                          placeholder="مثلاً: https://api.ultramsg.com/instance/messages/chat?token=XXX&to={phone}&body={message}"
+                          className="w-full bg-slate-50 border border-slate-250 rounded-lg p-2.5 font-mono text-xs text-left focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all outline-hidden"
+                        />
+                        <div className="flex flex-wrap gap-2 text-[10px] text-slate-500 leading-normal pt-1.5 font-sans">
+                          <span className="bg-slate-100 px-1.5 py-0.5 rounded"><b>{"{phone}"}</b>: رقم هاتف المشترك مرمزاً</span>
+                          <span className="bg-slate-100 px-1.5 py-0.5 rounded"><b>{"{message}"}</b>: نص الرسالة المولدة</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Save configurations button */}
+                  <div className="pt-2 border-t border-slate-100 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        saveWhatsAppSettings(whatsappTemplate, whatsappMethod, whatsappGatewayUrl);
+                        alert('تم حفظ إعدادات وقوالب ورابط تذكير واتساب في قاعدة SQLite بنجاح!');
+                      }}
+                      className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold cursor-pointer transition-all shrink-0"
+                    >
+                      حفظ إعدادات القوالب والـ API الآن
+                    </button>
+                  </div>
+
+                </div>
+
+                {/* Fast Preview Box */}
+                {whatsappApiLogs.length > 0 && (
+                  <div className="bg-amber-50/75 border border-amber-200 rounded-xl p-5 shadow-xs space-y-2">
+                    <span className="block text-[10px] font-bold text-amber-800 font-sans">معاينة تمثيلية حية لكيف ستبدو الرسالة للعميل الأول:</span>
+                    <p className="text-xs text-amber-900 leading-relaxed font-sans font-medium whitespace-pre-wrap">
+                      {generateWhatsAppMessage(whatsappApiLogs[0].subscriber, whatsappTemplate)}
+                    </p>
+                  </div>
+                )}
+
+              </div>
+
+              {/* Left Side Column (5 Cols on large): Selected Subscribers list & sends monitoring */}
+              <div className="lg:col-span-5 bg-white rounded-xl border border-slate-200 shadow-xs flex flex-col overflow-hidden max-h-[100%] min-h-[400px]">
+                
+                {/* Header list controls */}
+                <div className="p-4 bg-slate-50 border-b border-slate-100 flex justify-between items-center shrink-0">
+                  <div className="space-y-0.5">
+                    <span className="block text-xs font-black text-slate-850">قائمة المستلمين ({whatsappApiLogs.length})</span>
+                    <span className="block text-[9px] text-slate-500">حالة الإرسال وحسابات التذكير</span>
+                  </div>
+
+                  {whatsappMethod === 'http_api' && (
+                    <button
+                      type="button"
+                      onClick={runHttpWhatsappBulkSend}
+                      disabled={whatsappSendingInProgress || whatsappApiLogs.length === 0}
+                      className="px-3 py-1.5 bg-indigo-650 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-md text-[11px] font-bold cursor-pointer transition-all shadow-sm flex items-center gap-1"
+                    >
+                      {whatsappSendingInProgress ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          جاري البث...
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-3.5 h-3.5" />
+                          بث الإرسال للكل تلقائياً
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
+
+                {/* Filter and stats inside list card */}
+                <div className="px-4 py-2 bg-slate-50 border-b border-slate-100 text-[10px] flex gap-2 font-sans overflow-x-auto text-slate-500 shrink-0">
+                  <span>بانتظار الإرسال: {whatsappApiLogs.filter(l => l.status === 'idle').length}</span>
+                  <span>•</span>
+                  <span className="text-emerald-700 font-semibold">مكتمل: {whatsappApiLogs.filter(l => l.status === 'success').length}</span>
+                  <span>•</span>
+                  <span className="text-rose-650 font-semibold">أخطاء وهواتف فارغة: {whatsappApiLogs.filter(l => l.status === 'error' || !l.phone).length}</span>
+                </div>
+
+                {/* Queue lists viewport */}
+                <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+                  {whatsappApiLogs.length === 0 ? (
+                    <div className="p-12 text-center text-slate-400">
+                      لا يوجد أي مشتركين محددين حالياً لبث الإشعارات إليهم.
+                    </div>
+                  ) : (
+                    whatsappApiLogs.map((item, index) => {
+                      const textDraft = generateWhatsAppMessage(item.subscriber, whatsappTemplate);
+                      
+                      // Process Iraq phone to international format for standard URLs redirect
+                      let cleanPhone = item.phone.replace(/[^0-9]/g, '');
+                      if (cleanPhone.startsWith('07')) {
+                        cleanPhone = '964' + cleanPhone.substring(1);
+                      } else if (cleanPhone.startsWith('7')) {
+                        cleanPhone = '964' + cleanPhone;
+                      }
+
+                      const directLink = `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(textDraft)}`;
+
+                      return (
+                        <div key={item.username || index} className="p-3.5 flex items-center justify-between gap-3 text-right group hover:bg-slate-50/50">
+                          
+                          {/* Left / Main info */}
+                          <div className="space-y-1 flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-sans font-bold text-slate-900 text-xs truncate max-w-[140px]" title={item.name}>
+                                {item.name}
+                              </span>
+                              <span className="font-mono text-[9px] bg-slate-100 text-slate-500 px-1 py-0.2 rounded truncate">
+                                {item.username}
+                              </span>
+                            </div>
+                            
+                            <div className="text-[10px] text-slate-500 font-mono flex items-center gap-1 leading-none font-sans">
+                              <Phone className="w-2.5 h-2.5 text-slate-400" /> 
+                              {item.phone ? item.phone : <span className="text-red-500 font-bold">بلا هاتف</span>}
+                            </div>
+
+                            {/* Show detailed sending logs for gateways */}
+                            {item.message && (
+                              <div className="text-[9px] text-slate-600 mt-0.5 leading-tight italic bg-slate-50 p-1.5 rounded font-sans border border-slate-100">
+                                {item.message}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Right side operations and badges */}
+                          <div className="text-left shrink-0">
+                            {whatsappMethod === 'url_scheme' ? (
+                              item.phone ? (
+                                <a
+                                  href={directLink}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={() => {
+                                    setWhatsappApiLogs(prev => prev.map(log => log.username === item.username ? { ...log, status: 'success', message: 'رابط واتساب مفتوح' } : log));
+                                  }}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 text-slate-950 font-black rounded-lg text-[10px] select-none transition-all cursor-pointer shadow-sm shadow-emerald-500/10"
+                                >
+                                  فتح وإرسال 💬
+                                  <ExternalLink className="w-2.5 h-2.5 shrink-0" />
+                                </a>
+                              ) : (
+                                <span className="text-[10px] text-slate-400 font-semibold">بلا هاتف لتوليده</span>
+                              )
+                            ) : (
+                              // Gateway Status Indicator Badges
+                              <div>
+                                {item.status === 'idle' && (
+                                  <span className="text-[10px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full font-sans">
+                                    بانتظار البث
+                                  </span>
+                                )}
+                                {item.status === 'sending' && (
+                                  <span className="text-[10px] text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full font-black animate-pulse font-sans flex items-center gap-0.5">
+                                    <RefreshCw className="w-2.5 h-2.5 animate-spin" />
+                                    جاري الإرسال
+                                  </span>
+                                )}
+                                {item.status === 'success' && (
+                                  <span className="text-[10px] text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full font-black font-sans flex items-center gap-0.5">
+                                    ✓ مكتمل
+                                  </span>
+                                )}
+                                {item.status === 'error' && (
+                                  <span className="text-[10px] text-red-850 bg-red-50 px-2 py-0.5 rounded-full font-black font-sans flex items-center gap-0.5" title={item.message}>
+                                    ✕ فشل
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                {/* Footer tutorial or notice */}
+                <div className="p-3.5 bg-slate-50 border-t border-slate-100 text-[10px] text-slate-500 flex items-center justify-between shrink-0 font-sans font-medium">
+                  <span>المشتركون المحددون: {whatsappApiLogs.length}</span>
+                  <span>SuperSAS v4 Alerts Gateway</span>
+                </div>
+
+              </div>
+
+            </div>
+
+            {/* Modal Bottom Actions Footer */}
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end shrink-0">
+              <button
+                type="button"
+                onClick={() => setWhatsappModalOpen(false)}
+                className="px-5 py-2 bg-slate-900 border border-slate-200 hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer"
+              >
+                إنهاء وإغلاق المعالج التنبيهي
+              </button>
+            </div>
+
           </div>
         </div>
       )}
