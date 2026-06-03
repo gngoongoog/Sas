@@ -325,7 +325,8 @@ export const DashboardOverview: React.FC = () => {
     clearLogs,
     disconnectSession,
     profiles,
-    routers
+    routers,
+    addLog
   } = useSystem();
 
   const [refreshing, setRefreshing] = useState(false);
@@ -413,13 +414,12 @@ export const DashboardOverview: React.FC = () => {
         if (idx === steps.length - 1) {
           setDiagRunning(false);
           // Auto add a system log
-          logs.unshift({
-            id: `diag-log-${Date.now()}`,
-            category: 'success',
-            message: 'تم إجراء فحص واختبار الاتصال والمزامنة لراوتر RB-4011 بنجاح.',
-            details: 'REST API OK • Latency 9ms • CPU load under 22%',
-            timestamp: new Date().toISOString()
-          });
+          addLog(
+            'system',
+            'success',
+            'تم إجراء فحص واختبار الاتصال والمزامنة لراوتر RB-4011 بنجاح.',
+            'REST API OK • Latency 9ms • CPU load under 22%'
+          );
         }
       }, (idx + 1) * 800);
     });

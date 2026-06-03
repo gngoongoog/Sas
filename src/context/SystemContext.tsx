@@ -88,7 +88,15 @@ export const SystemProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const [logs, setLogs] = useState<SystemLog[]>(() => {
     const saved = localStorage.getItem('supersas_logs');
-    return saved ? JSON.parse(saved) : INITIAL_LOGS;
+    const parsed: SystemLog[] = saved ? JSON.parse(saved) : INITIAL_LOGS;
+    const seen = new Set<string>();
+    return parsed.filter((log) => {
+      // Clean up any potential duplicates or invalid objects
+      if (!log || !log.id) return false;
+      const isDuplicate = seen.has(log.id);
+      seen.add(log.id);
+      return !isDuplicate;
+    });
   });
 
   const [currency, setCurrency] = useState<'IQD' | 'USD'>(() => {
@@ -237,49 +245,56 @@ export const SystemProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     localStorage.setItem('supersas_terminal_script', terminalScript);
   }, [terminalScript]);
 
+  // حفظ مرجع دائم للمشتركين لضمان الفحص التلقائي المستند لأحدث البيانات بدون تكرار
+  const subscribersRef = React.useRef(subscribers);
+  useEffect(() => {
+    subscribersRef.current = subscribers;
+  }, [subscribers]);
+
   // فحص ذكي وتلقائي لقطع الخدمة والإنترنت فور انتهاء صلاحية الاشتراك
   useEffect(() => {
     const interval = setInterval(() => {
       const now = new Date();
+      const currentSubs = subscribersRef.current;
       
-      setSubscribers(prevSubs => {
-        let changed = false;
-        const nextSubs = prevSubs.map(sub => {
-          // إذا كان مشترك نشط وانتهى تاريخ صلاحيته في الماضي
+      const expiredSubs = currentSubs.filter(sub => sub.status === 'active' && new Date(sub.expiryDate) < now);
+      
+      if (expiredSubs.length > 0) {
+        // 1. تحديث الحالات في مصفوفة المشتركين دفعة واحدة
+        setSubscribers(prevSubs => prevSubs.map(sub => {
           if (sub.status === 'active' && new Date(sub.expiryDate) < now) {
-            changed = true;
-            
-            // 1. قطع الاتصال وفصل الجلسة النشطة تماماً لقطع الإنترنت فوراً
-            setSessions(prevSess => prevSess.filter(s => s.username !== sub.username));
-            
-            // 2. تدوين سجل حظر وقطع إنترنت
-            addLog(
-              'billing',
-              'warning',
-              `قطع الإنترنت التلقائي: انتهى اشتراك العميل [${sub.fullName}]`,
-              `تم تجريد العميل من الإنترنت بفصل جلسته النشطة فوراً وتعطيل الحساب حتى التجديد.`
-            );
-
-            // 3. كتابة سكريبت مايكروتك للتعطيل والطرد
-            appendToTerminal(
-              `# قطع الإنترنت التلقائي لانتهاء صلاحية اشتراك: ${sub.fullName}\n` +
-              `/ppp secret disable [find name="${sub.username}"]\n` +
-              `/ppp active remove [find name="${sub.username}"]`
-            );
-
-            // 4. استدعاء المزامنة الفورية لـ API المايكروتك لغرض التعطيل الفعلي للـ Secret
-            const expiredSub = { ...sub, status: 'expired' as const };
-            setTimeout(() => {
-              syncSubscriberToRouter(sub.id, 'toggle', undefined, expiredSub);
-            }, 100);
-
-            return expiredSub;
+            return { ...sub, status: 'expired' };
           }
           return sub;
-        });
+        }));
 
-        return changed ? nextSubs : prevSubs;
-      });
+        // 2. إجراء العمليات والآثار الجانبية لكل مشترك منتهي بشكل آمن تماماً خارج معدل الحالة (reducer)
+        expiredSubs.forEach(sub => {
+          // قطع الاتصال وفصل الجلسة النشطة
+          setSessions(prevSess => prevSess.filter(s => s.username !== sub.username));
+          
+          // تدوين سجل حظر وقطع إنترنت
+          addLog(
+            'billing',
+            'warning',
+            `قطع الإنترنت التلقائي: انتهى اشتراك العميل [${sub.fullName}]`,
+            `تم تجريد العميل من الإنترنت بفصل جلسته النشطة فوراً وتعطيل الحساب حتى التجديد.`
+          );
+
+          // كتابة سكريبت مايكروتك للتعطيل والطرد
+          appendToTerminal(
+            `# قطع الإنترنت التلقائي لانتهاء صلاحية اشتراك: ${sub.fullName}\n` +
+            `/ppp secret disable [find name="${sub.username}"]\n` +
+            `/ppp active remove [find name="${sub.username}"]`
+          );
+
+          // استدعاء المزامنة الفورية لـ API المايكروتك
+          const expiredSub = { ...sub, status: 'expired' as const };
+          setTimeout(() => {
+            syncSubscriberToRouter(sub.id, 'toggle', undefined, expiredSub);
+          }, 100);
+        });
+      }
     }, 10000); // يفحص كل 10 ثوانٍ لضمان اللحظية الحقيقية
 
     return () => clearInterval(interval);
@@ -331,8 +346,9 @@ export const SystemProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, [profiles, subscribers]);
 
   const addLog = (type: SystemLog['type'], category: SystemLog['category'], message: string, details?: string) => {
+    const randomSuffix = Math.floor(Math.random() * 1000000);
     const newLog: SystemLog = {
-      id: `log-${Date.now()}`,
+      id: `log-${Date.now()}-${randomSuffix}`,
       timestamp: new Date().toISOString(),
       type,
       category,
