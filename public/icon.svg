@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#3b82f6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1e40af;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="gradRef" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#10b981;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#059669;stop-opacity:1" />
+    </linearGradient>
+    <radialGradient id="backglow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#1e1b4b;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#090d16;stop-opacity:1" />
+    </radialGradient>
+  </defs>
+  
+  <!-- Ambient Deep Background Slate -->
+  <rect width="512" height="512" rx="128" fill="url(#backglow)" />
+  
+  <!-- Decorative Tech Circuit Lines -->
+  <path d="M 120 120 L 210 120 L 256 166 L 302 120 L 392 120" stroke="#1e293b" stroke-width="8" stroke-linecap="round" fill="none" />
+  <path d="M 120 392 L 210 392 L 256 346 L 302 392 L 392 392" stroke="#1e293b" stroke-width="8" stroke-linecap="round" fill="none" />
+  <path d="M 120 256 L 392 256" stroke="#1e293b" opacity="0.3" stroke-width="4" stroke-linecap="round" fill="none" />
+
+  <!-- Outer Ring Tracker -->
+  <circle cx="256" cy="256" r="180" stroke="#1e293b" stroke-width="6" fill="none" stroke-dasharray="16 12" />
+  <circle cx="256" cy="256" r="150" stroke="#2563eb" stroke-width="4" opacity="0.25" fill="none" />
+  
+  <!-- Active Green Nodes representing MikroTik uptime status -->
+  <circle cx="106" cy="256" r="14" fill="url(#gradRef)" />
+  <circle cx="406" cy="256" r="14" fill="url(#gradRef)" />
+  
+  <!-- Core Shield / Node Structure -->
+  <g transform="translate(141, 126)">
+    <!-- Main Poly Shield -->
+    <path d="M 115 0 L 230 40 L 230 160 C 230 220 115 260 115 260 C 115 260 0 220 0 160 L 0 40 Z" fill="url(#grad1)" filter="drop-shadow(0px 8px 16px rgba(37, 99, 235, 0.455))" />
+    
+    <!-- White Inner Shield Frame -->
+    <path d="M 115 25 L 205 57 L 205 145 C 205 190 115 230 115 230 C 115 230 25 190 25 145 L 25 57 Z" fill="none" stroke="#60a5fa" stroke-width="4" opacity="0.4" />
+    
+    <!-- Bold SAS Letter mark -->
+    <text x="115" y="145" fill="#ffffff" font-size="64" font-weight="900" font-family="'Inter', sans-serif" text-anchor="middle" letter-spacing="-2">SAS</text>
+    <text x="115" y="180" fill="#93c5fd" font-size="16" font-weight="800" font-family="'Inter', sans-serif" text-anchor="middle" letter-spacing="4">V4</text>
+  </g>
+  
+  <!-- Inner Status Pulse -->
+  <circle cx="256" cy="60" r="10" fill="#60a5fa" animate="pulse" />
+</svg>

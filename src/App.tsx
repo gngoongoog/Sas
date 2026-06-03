@@ -8,6 +8,7 @@ import { RouterConfig } from './components/RouterConfig';
 import { ScriptTerminal } from './components/ScriptTerminal';
 import { AiCopilot } from './components/AiCopilot';
 import { AlertManager } from './components/AlertManager';
+import { PwaInstallPrompt } from './components/PwaInstallPrompt';
 
 import { 
   Users, 
@@ -211,6 +212,9 @@ export default function App() {
               </div>
             </div>
 
+            {/* Optional PWA Install Utility */}
+            <PwaInstallPrompt />
+
             {/* Bottom Credit line */}
             <div className="text-center text-[10px] text-slate-600 font-mono">
               بوابة SuperSAS المشفرة لحماية خوادم مايكروتك وراديوس © {new Date().getFullYear()}
@@ -344,6 +348,9 @@ export default function App() {
 
             </nav>
           </div>
+
+          {/* Optional Sidebar install trigger */}
+          <PwaInstallPrompt minimal={true} />
 
           <div>
             {/* Active Server Status */}
