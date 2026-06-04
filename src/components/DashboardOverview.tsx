@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSystem } from '../context/SystemContext';
+import { SystemResourceGauges } from './SystemResourceGauges';
 import { 
   Users, 
   Activity, 
@@ -579,6 +580,9 @@ export const DashboardOverview: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Live System Server VM Core Resource Gauges */}
+      <SystemResourceGauges />
 
       {/* Real-time MikroTik CPU / RAM Resources monitoring */}
       <RouterRealtimeMonitor routers={routers} />
