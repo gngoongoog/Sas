@@ -6,6 +6,7 @@ interface SystemContextType {
   isAuthenticated: boolean;
   login: (username: string, password_raw: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
+  refreshAll: () => Promise<void>; // Expose refreshAll helper
 
   routers: Router[];
   profiles: PPPoEProfile[];
@@ -149,7 +150,10 @@ export const SystemProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       const routersData = rRes.ok ? await rRes.json() : [];
       const profilesData = pRes.ok ? await pRes.json() : [];
-      const subsData = sRes.ok ? await sRes.json() : [];
+      
+      const subsRaw = sRes.ok ? await sRes.json() : [];
+      const subsData = Array.isArray(subsRaw) ? subsRaw : (subsRaw.data || []);
+
       const cardsData = cRes.ok ? await cRes.json() : [];
       const sessionsData = sessRes.ok ? await sessRes.json() : [];
       const logsData = lRes.ok ? await lRes.json() : [];
@@ -173,12 +177,48 @@ export const SystemProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
-  // Fire on Login & Poll periodically every 12 seconds
+  // Fire on Login & Poll periodically using two separate intervals
   useEffect(() => {
     if (!token) return;
     fetchAllData();
-    const interval = setInterval(fetchAllData, 12000);
-    return () => clearInterval(interval);
+
+    // Fast interval — sessions and logs only — every 45 seconds
+    const fastInterval = setInterval(async () => {
+      const h = { Authorization: `Bearer ${token}` };
+      try {
+        const [sRes, lRes] = await Promise.all([
+          fetch('/api/sessions', { headers: h }),
+          fetch('/api/logs',     { headers: h })
+        ]);
+        if (sRes.ok) setSessions(await sRes.json());
+        if (lRes.ok) setLogs(await lRes.json());
+      } catch { /* silent — stale data is acceptable */ }
+    }, 45000);
+
+    // Slow interval — routers, profiles, subscribers, cards — every 5 minutes
+    const slowInterval = setInterval(async () => {
+      const h = { Authorization: `Bearer ${token}` };
+      try {
+        const [rRes, pRes, subRes, cRes] = await Promise.all([
+          fetch('/api/routers',     { headers: h }),
+          fetch('/api/profiles',    { headers: h }),
+          fetch('/api/subscribers', { headers: h }),
+          fetch('/api/cards',       { headers: h })
+        ]);
+        if (rRes.ok)   setRouters(await rRes.json());
+        if (pRes.ok)   setProfiles(await pRes.json());
+        if (subRes.ok) {
+          const d = await subRes.json();
+          setSubscribers(Array.isArray(d) ? d : (d.data || []));
+        }
+        if (cRes.ok)   setCards(await cRes.json());
+      } catch { /* silent */ }
+    }, 300000);
+
+    return () => {
+      clearInterval(fastInterval);
+      clearInterval(slowInterval);
+    };
   }, [token]);
 
   // Sync to database settings table on change
@@ -779,6 +819,7 @@ export const SystemProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         isAuthenticated: !!token,
         login,
         logout,
+        refreshAll: fetchAllData,
         routers,
         profiles,
         subscribers,

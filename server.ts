@@ -5,6 +5,7 @@ import { GoogleGenAI } from '@google/genai';
 import https from 'https';
 import http from 'http';
 import dotenv from 'dotenv';
+import fs from 'fs';
 
 // Import database, encryption and auth layers
 import db, { initDb, encrypt, decrypt } from './server/db';
@@ -371,11 +372,40 @@ async function startServer() {
   // 👥 SUBSCRIBERS API Endpoint Concerns
   // ==========================================
 
-  // GET /api/subscribers
-  app.get('/api/subscribers', (req, res) => {
+  // GET /api/subscribers (Paginated, Masked Credentials version)
+  app.get('/api/subscribers', requireAdminAuth, (req, res) => {
     try {
-      const rows = db.prepare('SELECT * FROM subscribers').all();
-      res.json(rows);
+      const page   = Math.max(1, parseInt(req.query.page   as string) || 1);
+      const limit  = Math.min(200, parseInt(req.query.limit as string) || 100);
+      const offset = (page - 1) * limit;
+      const search = ((req.query.search as string) || '').trim();
+
+      let baseQuery   = 'FROM subscribers';
+      const params: any[] = [];
+
+      if (search) {
+        baseQuery += ' WHERE username LIKE ? OR fullName LIKE ? OR phone LIKE ?';
+        const s = `%${search}%`;
+        params.push(s, s, s);
+      }
+
+      const rows = db.prepare(
+        `SELECT * ${baseQuery} ORDER BY createdAt DESC LIMIT ? OFFSET ?`
+      ).all(...params, limit, offset) as any[];
+
+      const total = (db.prepare(
+        `SELECT COUNT(*) as total ${baseQuery}`
+      ).get(...params) as any).total;
+
+      const safeRows = rows.map((r: any) => ({ ...r, password: '••••••••' }));
+
+      res.json({
+        data:  safeRows,
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit)
+      });
     } catch (error: any) {
       res.status(500).json({ error: 'فشل استرجاع بيانات المشتركين.', details: error.message });
     }
@@ -422,6 +452,9 @@ async function startServer() {
       const { id } = req.params;
       const { username, password, fullName, phone, routerId, profileId, ipAddress, status, expiryDate, macAddress } = req.body;
 
+      const existing = db.prepare('SELECT password FROM subscribers WHERE id = ?').get(id) as any;
+      const finalPassword = (password && password !== '••••••••') ? password : (existing?.password || '');
+
       // Update db row
       db.prepare(`
         UPDATE subscribers
@@ -429,7 +462,7 @@ async function startServer() {
         WHERE id = ?
       `).run(
         username,
-        password,
+        finalPassword,
         fullName,
         phone || '',
         routerId,
@@ -555,7 +588,7 @@ async function startServer() {
   // GET /api/logs
   app.get('/api/logs', (req, res) => {
     try {
-      const rows = db.prepare('SELECT * FROM logs ORDER BY timestamp DESC LIMIT 600').all();
+      const rows = db.prepare('SELECT * FROM logs ORDER BY timestamp DESC LIMIT 200').all();
       res.json(rows);
     } catch (error: any) {
       res.status(500).json({ error: 'فشل استرجاع السجلات.' });
@@ -602,6 +635,142 @@ async function startServer() {
       }
     } catch (error: any) {
       res.status(500).json({ error: 'فشل حفظ الإعدادات.' });
+    }
+  });
+
+  // =========================================================================
+  // 💾 DATABASE EXPORT / JSON PERIODIC & MANUAL BACKUP ENDPOINTS
+  // =========================================================================
+
+  // 1. Export direct on-demand JSON for browser download
+  app.get('/api/settings/backup-json/export', requireAdminAuth, (req, res) => {
+    try {
+      const subscribers = db.prepare('SELECT * FROM subscribers').all() as any[];
+      const routers = db.prepare('SELECT * FROM routers').all() as any[];
+      const profiles = db.prepare('SELECT * FROM profiles').all() as any[];
+      
+      const exportData = {
+        exportedAt: new Date().toISOString(),
+        generator: 'SuperSAS v4 Database Export',
+        subscribers,
+        routers,
+        profiles
+      };
+
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Content-Disposition', 'attachment; filename=supersas-export.json');
+      res.json(exportData);
+    } catch (error: any) {
+      console.error('[Backup Export API] Error:', error);
+      res.status(500).json({ error: 'فشل تصدير البيانات: ' + error.message });
+    }
+  });
+
+  // 2. Get list of periodic & manual JSON backup files saved on the server
+  app.get('/api/settings/backup-json/list', requireAdminAuth, (req, res) => {
+    try {
+      const backupDir = path.join(process.cwd(), 'data', 'backups', 'json');
+      if (!fs.existsSync(backupDir)) {
+        fs.mkdirSync(backupDir, { recursive: true });
+      }
+
+      const files = fs.readdirSync(backupDir)
+        .filter((f: string) => f.startsWith('backup-json-') && f.endsWith('.json'))
+        .map((f: string) => {
+          const filePath = path.join(backupDir, f);
+          const stats = fs.statSync(filePath);
+          return {
+            filename: f,
+            sizeBytes: stats.size,
+            sizeFormatted: (stats.size / 1024).toFixed(2) + ' KB',
+            createdAt: stats.mtime.toISOString()
+          };
+        })
+        .sort((a: any, b: any) => b.createdAt.localeCompare(a.createdAt));
+
+      res.json(files);
+    } catch (error: any) {
+      console.error('[Backup List API] Error:', error);
+      res.status(500).json({ error: 'فشل جلب قائمة النسخ الاحتياطية JSON: ' + error.message });
+    }
+  });
+
+  // 3. Trigger manual JSON backup saved to server data folder
+  app.post('/api/settings/backup-json/trigger', requireAdminAuth, (req, res) => {
+    try {
+      const backupDir = path.join(process.cwd(), 'data', 'backups', 'json');
+      if (!fs.existsSync(backupDir)) {
+        fs.mkdirSync(backupDir, { recursive: true });
+      }
+
+      const subscribers = db.prepare('SELECT * FROM subscribers').all() as any[];
+      const routers = db.prepare('SELECT * FROM routers').all() as any[];
+      const profiles = db.prepare('SELECT * FROM profiles').all() as any[];
+
+      const exportData = {
+        exportedAt: new Date().toISOString(),
+        generator: 'SuperSAS v4 Manual Database Export',
+        subscribers,
+        routers,
+        profiles
+      };
+
+      const dateStr = new Date().toISOString().replace(/[:.]/g, '-');
+      const filename = `backup-json-manual-${dateStr}.json`;
+      const backupPath = path.join(backupDir, filename);
+      
+      fs.writeFileSync(backupPath, JSON.stringify(exportData, null, 2), 'utf8');
+
+      // write a system log
+      logToSql('system', 'success', `نسخ احتياطي يدوي JSON ناجح`, `تم تصدير قسيمة قاعدة البيانات (${subscribers.length} مشترك و ${routers.length} راوتر) وحفظها بنجاح بالسيرفر باسم ${filename}.`);
+
+      res.json({ success: true, filename, message: 'تم إنشاء النسخة الاحتياطية وحفظها محلياً في السيرفر بنجاح!' });
+    } catch (error: any) {
+      console.error('[Backup Trigger API] Error:', error);
+      res.status(500).json({ error: 'فشل حفظ النسخة الاحتياطية JSON في السيرفر: ' + error.message });
+    }
+  });
+
+  // 4. Download specific JSON backup file
+  app.get('/api/settings/backup-json/download/:filename', requireAdminAuth, (req, res) => {
+    try {
+      const filename = req.params.filename;
+      if (filename.includes('/') || filename.includes('..') || !filename.endsWith('.json') || !filename.startsWith('backup-json-')) {
+        return res.status(400).json({ error: 'اسم ملف غير صالح.' });
+      }
+
+      const filePath = path.join(process.cwd(), 'data', 'backups', 'json', filename);
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ error: 'ملف النسخة الاحتياطية غير موجود.' });
+      }
+
+      res.download(filePath, filename);
+    } catch (error: any) {
+      console.error('[Backup Download API] Error:', error);
+      res.status(500).json({ error: 'فشل تحميل ملف النسخة الاحتياطية: ' + error.message });
+    }
+  });
+
+  // 5. Delete specific JSON backup file
+  app.delete('/api/settings/backup-json/delete/:filename', requireAdminAuth, (req, res) => {
+    try {
+      const filename = req.params.filename;
+      if (filename.includes('/') || filename.includes('..') || !filename.endsWith('.json') || !filename.startsWith('backup-json-')) {
+        return res.status(400).json({ error: 'اسم ملف غير صالح.' });
+      }
+
+      const filePath = path.join(process.cwd(), 'data', 'backups', 'json', filename);
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ error: 'ملف النسخة الاحتياطية غير موجود.' });
+      }
+
+      fs.unlinkSync(filePath);
+      logToSql('system', 'warning', `حذف نسخة احتياطية JSON`, `تم حذف ملف النسخة الاحتياطية: ${filename}`);
+
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('[Backup Delete API] Error:', error);
+      res.status(500).json({ error: 'فشل حذف ملف النسخة الاحتياطية: ' + error.message });
     }
   });
 

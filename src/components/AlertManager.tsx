@@ -24,6 +24,7 @@ import {
 
 export function AlertManager() {
   const { 
+    token,
     routers, 
     subscribers, 
     updateRouter, 
@@ -32,7 +33,7 @@ export function AlertManager() {
     profiles
   } = useSystem();
 
-  // Telegram Config state (persisted in localStorage)
+  // Telegram Config state: Hydrate from server-first, fall back to localStorage
   const [telegramConfig, setTelegramConfig] = useState(() => {
     const saved = localStorage.getItem('supersas_telegram_config');
     if (saved) return JSON.parse(saved);
@@ -59,7 +60,7 @@ export function AlertManager() {
         id: 'alert-1',
         type: 'device_offline',
         title: 'انقطاع اتصال خادم مايكروتك',
-        message: 'الخادم: RB-3011 (الفرع الجنوبي) لم يستجب لنداءات الفحص الآلي (OFFLINE). يرجى فحص الطاقة أو خط الإدخال.',
+        message: 'الخادم: RB-3011 (الفرع الجنوبي) لم يستجب لنداءات الفحص الآلي (OFFLINE). يرجى فحسن الطاقة أو خط الإدخال.',
         timestamp: new Date(Date.now() - 3600000 * 3).toISOString(), // 3 hours ago
         sentToTelegram: false,
         status: 'unread'
@@ -81,15 +82,78 @@ export function AlertManager() {
   const [testStatus, setTestStatus] = useState<{ success: boolean; message: string } | null>(null);
   const [scanning, setScanning] = useState(false);
   const [scanResult, setScanResult] = useState<string | null>(null);
+  const [toastNotification, setToastNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  // Sync state to localStorage
+  // Fetch settings from Database on mount
   useEffect(() => {
+    if (!token) return;
+    fetch('/api/settings', {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    })
+    .then(res => res.ok ? res.json() : Promise.reject())
+    .then(data => {
+      if (data && (data.tg_botToken !== undefined || data.tg_chatId !== undefined)) {
+        let triggers = {
+          expiryWarning: true,
+          failedPayment: true,
+          deviceOffline: true,
+          deviceOnline: true
+        };
+        if (data.tg_enabledTriggers) {
+          try {
+            triggers = JSON.parse(data.tg_enabledTriggers);
+          } catch(e) {}
+        }
+        setTelegramConfig({
+          botToken: data.tg_botToken || '',
+          chatId: data.tg_chatId || '',
+          enabledTriggers: triggers
+        });
+      }
+    })
+    .catch(() => {});
+  }, [token]);
+
+  // Sync state to server & local storage on change
+  useEffect(() => {
+    if (!token) return;
+    // Local backup
     localStorage.setItem('supersas_telegram_config', JSON.stringify(telegramConfig));
-  }, [telegramConfig]);
+
+    // Server-side database persistence sync
+    const handler = setTimeout(() => {
+      fetch('/api/settings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          settings: {
+            tg_botToken: telegramConfig.botToken,
+            tg_chatId: telegramConfig.chatId,
+            tg_enabledTriggers: JSON.stringify(telegramConfig.enabledTriggers)
+          }
+        })
+      }).catch(() => {});
+    }, 800); // stable debounce
+
+    return () => clearTimeout(handler);
+  }, [telegramConfig, token]);
 
   useEffect(() => {
     localStorage.setItem('supersas_alerts', JSON.stringify(alerts));
   }, [alerts]);
+
+  // Clean iframe-safe toast helper
+  const triggerToast = (type: 'success' | 'error', message: string) => {
+    setToastNotification({ type, message });
+    setTimeout(() => {
+      setToastNotification(null);
+    }, 4500);
+  };
 
   // Handle send Telegram API post fetch
   const sendTelegramMessage = async (messageText: string): Promise<{ success: boolean; error?: string }> => {
@@ -102,6 +166,7 @@ export function AlertManager() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
           botToken: telegramConfig.botToken,
@@ -133,9 +198,11 @@ export function AlertManager() {
     if (res.success) {
       setTestStatus({ success: true, message: 'تم إرسال رسالة فحص بنجاح إلى قناتك أو حسابك المباشر في تلغرام!' });
       addLog('system', 'success', 'اختبار اتصال التنبيهات بـ Telegram ناجح', 'تم توجيه رسالة اختبار بنجاح.');
+      triggerToast('success', 'تم اختبار ربط التيليجرام بنجاح متكامل!');
     } else {
       setTestStatus({ success: false, message: res.error || 'حدث خطأ غير معروف.' });
       addLog('system', 'error', 'فشل اختبار اتصال التنبيهات بـ Telegram', res.error);
+      triggerToast('error', `فشل اختبار الربط: ${res.error}`);
     }
   };
 
@@ -172,7 +239,7 @@ export function AlertManager() {
     setAlerts((prev) => [newAlert, ...prev]);
   };
 
-  // 1. Run immediate Network Subscription Scan
+  // Run immediate Network Subscription Scan
   const handleScanSubscribersAndDevices = async () => {
     setScanning(true);
     setScanResult(null);
@@ -241,7 +308,7 @@ export function AlertManager() {
     }
   };
 
-  // 2. Simulation Sandbox Handlers
+  // Simulation Sandbox Handlers
   const handleSimulateDeviceOffline = async () => {
     if (routers.length === 0) return;
     const target = routers[0];
@@ -257,6 +324,7 @@ export function AlertManager() {
 
     await createAlert('device_offline', title, message, telegramText);
     addLog('system', 'error', `محاكاة: سقوط سيرفر مايكروتك ${target.name}`, `IP: ${target.ip}`);
+    triggerToast('success', 'تم محاكاة سقوط السيرفر وحفظ التنبيه مزمناً!');
   };
 
   const handleSimulateDeviceOnline = async () => {
@@ -274,6 +342,7 @@ export function AlertManager() {
 
     await createAlert('device_online', title, message, telegramText);
     addLog('system', 'success', `محاكاة: استعادة اتصال سيرفر مايكروتك ${target.name}`, `IP: ${target.ip}`);
+    triggerToast('success', 'تم محاكاة عودة الربط الفوري بالراوتر بنجاح!');
   };
 
   const handleSimulateFailedPayment = async () => {
@@ -284,6 +353,7 @@ export function AlertManager() {
 
     await createAlert('failed_payment', title, message, telegramText);
     addLog('billing', 'error', 'محاكاة: فشل تفعيل كرت شحن PIN لليوزر saif_ob', 'تكرار خاطئ للكود.');
+    triggerToast('success', 'تم محاكاة عملية الدفع الفاشلة وتوجيه بلاغ حرج!');
   };
 
   const handleSimulateSubscriptionExpiring = async () => {
@@ -306,6 +376,7 @@ export function AlertManager() {
 
     await createAlert('expiration_warning', title, message, telegramText);
     addLog('billing', 'warning', `محاكاة: اشتراك عميل يوشك على الانتهاء: ${sub.fullName}`, `يوزر: ${sub.username} متبقي 6 أيام.`);
+    triggerToast('success', 'تم محاكاة إنذار اقتراب الفصل بنجاح!');
   };
 
   // Actions on Alerts
@@ -313,10 +384,12 @@ export function AlertManager() {
     setAlerts((prev) =>
       prev.map((a) => (a.id === id ? { ...a, status: 'resolved' as const } : a))
     );
+    triggerToast('success', 'تم وضع إشارة الحل التام للاشتراك!');
   };
 
   const deleteAlert = (id: string) => {
     setAlerts((prev) => prev.filter((a) => a.id !== id));
+    triggerToast('success', 'تم حذف التنبيه المحدد.');
   };
 
   const resendAlertToTelegram = async (alertItem: SystemAlert) => {
@@ -335,15 +408,24 @@ export function AlertManager() {
         prev.map((a) => (a.id === alertItem.id ? { ...a, sentToTelegram: true } : a))
       );
       addLog('system', 'success', 'إعادة إرسال التنبيه لـ Telegram بنجاح', `تنبيه: ${alertItem.title}`);
+      triggerToast('success', 'تمت إعادة الإرسال إلى روبوت التليجرام بنجاح متكامل!');
     } else {
       addLog('system', 'error', 'فشل إعادة إرسال التنبيه لـ Telegram', res.error);
-      window.alert('فشل الإرسال: ' + res.error);
+      triggerToast('error', `فشل بث التوجيه: ${res.error}`);
     }
   };
 
   return (
-    <div className="space-y-6 text-right" dir="rtl">
+    <div className="space-y-6 text-right relative" dir="rtl">
       
+      {/* Toast Notification Container */}
+      {toastNotification && (
+        <div className={`fixed bottom-5 left-5 z-50 p-4 rounded-xl shadow-lg border text-xs font-bold font-sans transition-all flex items-center gap-2.5 ${toastNotification.type === 'success' ? 'bg-slate-900 border-slate-850 text-white' : 'bg-red-900 border-red-800 text-white'}`}>
+          {toastNotification.type === 'success' ? <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" /> : <XCircle className="w-4 h-4 text-rose-400 shrink-0" />}
+          <span>{toastNotification.message}</span>
+        </div>
+      )}
+
       {/* Title Header Card */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
         <div>
@@ -617,7 +699,7 @@ export function AlertManager() {
                     placeholder="مثل: 5821034105:AAF39u..."
                     value={telegramConfig.botToken}
                     onChange={(e) => setTelegramConfig({ ...telegramConfig, botToken: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 pl-10 text-xs font-mono text-left focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-hidden"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 pl-10 text-xs font-mono text-left focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-hidden text-right"
                   />
                   <button
                     type="button"
@@ -637,7 +719,7 @@ export function AlertManager() {
                   placeholder="رقم المعرف المباشر مثل: -1001593410"
                   value={telegramConfig.chatId}
                   onChange={(e) => setTelegramConfig({ ...telegramConfig, chatId: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs font-mono text-left focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-hidden"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs font-mono focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-hidden text-right"
                 />
               </div>
 
@@ -654,7 +736,7 @@ export function AlertManager() {
                         ...telegramConfig,
                         enabledTriggers: { ...telegramConfig.enabledTriggers, expiryWarning: e.target.checked }
                       })}
-                      className="rounded-sm border-slate-300 text-blue-600 focus:ring-blue-500/30"
+                      className="rounded-sm border-slate-300 text-blue-600 focus:ring-blue-500/30 font-sans"
                     />
                     <span>إنذار قرب انتهاء صلاحيات العملاء (متبقي &lt;= 7 أيام)</span>
                   </label>
@@ -667,7 +749,7 @@ export function AlertManager() {
                         ...telegramConfig,
                         enabledTriggers: { ...telegramConfig.enabledTriggers, failedPayment: e.target.checked }
                       })}
-                      className="rounded-sm border-slate-300 text-blue-600 focus:ring-blue-500/30"
+                      className="rounded-sm border-slate-300 text-blue-600 focus:ring-blue-500/30 font-sans"
                     />
                     <span>محاولات التفعيل الفاشلة (مثال: محاولات كروت PIN المنتهية)</span>
                   </label>
@@ -680,7 +762,7 @@ export function AlertManager() {
                         ...telegramConfig,
                         enabledTriggers: { ...telegramConfig.enabledTriggers, deviceOffline: e.target.checked }
                       })}
-                      className="rounded-sm border-slate-300 text-blue-600 focus:ring-blue-500/30"
+                      className="rounded-sm border-slate-300 text-blue-600 focus:ring-blue-500/30 font-sans"
                     />
                     <span>إنذار حرج عند خروج مخدم مايكروتك عن الخدمة (Offline)</span>
                   </label>
@@ -693,7 +775,7 @@ export function AlertManager() {
                         ...telegramConfig,
                         enabledTriggers: { ...telegramConfig.enabledTriggers, deviceOnline: e.target.checked }
                       })}
-                      className="rounded-sm border-slate-300 text-blue-600 focus:ring-blue-500/30"
+                      className="rounded-sm border-slate-300 text-blue-600 focus:ring-blue-500/30 font-sans"
                     />
                     <span>إشعار بالتعافي وعودة خادم مايكروتك للعمل (Online)</span>
                   </label>
@@ -706,7 +788,7 @@ export function AlertManager() {
                   type="button"
                   onClick={handleTestConnection}
                   disabled={testLoading || !telegramConfig.botToken || !telegramConfig.chatId}
-                  className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-blue-500/10"
+                  className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-blue-500/10 font-sans"
                 >
                   <Send className="w-3.5 h-3.5" />
                   {testLoading ? 'جاري الفحص المباشر...' : 'إرسال رسالة اختبار للبوت'}
@@ -714,10 +796,10 @@ export function AlertManager() {
               </div>
 
               {testStatus && (
-                <div className={`p-3 rounded-lg text-xs leading-relaxed ${testStatus.success ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-red-50 text-red-800 border border-red-200'}`}>
+                <div className={`p-3 rounded-lg text-xs leading-relaxed font-sans ${testStatus.success ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-red-50 text-red-800 border border-red-200'}`}>
                   {testStatus.success ? (
                     <p className="flex items-center gap-1.5 font-bold">
-                      <span>🟢</span> {testStatus.message}
+                       {testStatus.message}
                     </p>
                   ) : (
                     <div>

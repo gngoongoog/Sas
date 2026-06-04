@@ -9,6 +9,7 @@ import { ScriptTerminal } from './components/ScriptTerminal';
 import { AiCopilot } from './components/AiCopilot';
 import { AlertManager } from './components/AlertManager';
 import { PwaInstallPrompt } from './components/PwaInstallPrompt';
+import { SystemSettings } from './components/SystemSettings';
 
 import { 
   Users, 
@@ -41,7 +42,7 @@ function AppContent() {
   const [loginError, setLoginError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'subscribers' | 'profiles' | 'vouchers' | 'routers' | 'scripts' | 'ai' | 'alerts'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'subscribers' | 'profiles' | 'vouchers' | 'routers' | 'scripts' | 'ai' | 'alerts' | 'settings'>('dashboard');
   const [dateStr, setDateStr] = useState('');
 
   // Handle Login submission hitting the SQLite express endpoint
@@ -333,6 +334,18 @@ function AppContent() {
               <span>التنبيهات والمراقبة</span>
             </button>
 
+            <button
+              onClick={() => setActiveTab('settings')}
+              className={`w-full flex items-center gap-3 p-3 rounded-lg transition-colors select-none cursor-pointer text-right ${
+                activeTab === 'settings' 
+                  ? 'bg-blue-600/10 text-blue-400 font-bold border border-blue-600/20 shadow-sm' 
+                  : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
+              }`}
+            >
+              <Settings className="w-4 h-4 text-slate-400" />
+              <span>إعدادات النظام وأمان البيانات</span>
+            </button>
+
           </nav>
         </div>
 
@@ -438,6 +451,7 @@ function AppContent() {
           {activeTab === 'scripts' && <ScriptTerminal />}
           {activeTab === 'ai' && <AiCopilot />}
           {activeTab === 'alerts' && <AlertManager />}
+          {activeTab === 'settings' && <SystemSettings />}
 
         </main>
       </div>

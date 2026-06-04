@@ -1,6 +1,8 @@
 import http from 'http';
 import https from 'https';
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 
 export function startCronJobs(db: any, decrypt: (s: string) => string): void {
   console.log('[SuperSAS Cron] Initializing periodic subscriber expiry checker...');
@@ -251,4 +253,167 @@ export function startCronJobs(db: any, decrypt: (s: string) => string): void {
 
   // Run subsequent intervals every 60 minutes
   setInterval(runExpiryCheck, 60 * 60 * 1000);
+
+  // Daily automatic database backup schedule
+  function scheduleDailyBackup(): void {
+    function runBackup(): void {
+      try {
+        const backupDir  = path.join(process.cwd(), 'data', 'backups');
+        if (!fs.existsSync(backupDir)) {
+          fs.mkdirSync(backupDir, { recursive: true });
+        }
+
+        const dateStr    = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+        const backupPath = path.join(backupDir, `supersas-${dateStr}.db`);
+
+        (db as any).backup(backupPath)
+          .then(() => {
+            console.log(`[Backup] ✅ النسخة الاحتياطية اليومية: ${backupPath}`);
+
+            // Keep only the last 7 backups, delete older ones
+            const files = fs.readdirSync(backupDir)
+              .filter((f: string) => f.startsWith('supersas-') && f.endsWith('.db'))
+              .sort(); // alphabetical = chronological for YYYY-MM-DD format
+            while (files.length > 7) {
+              const old = files.shift()!;
+              fs.unlinkSync(path.join(backupDir, old));
+              console.log(`[Backup] 🗑️ حذف نسخة قديمة: ${old}`);
+            }
+          })
+          .catch((err: Error) => {
+            console.error('[Backup] ❌ فشل إنشاء النسخة الاحتياطية:', err.message);
+          });
+      } catch (err: any) {
+        console.error('[Backup] ❌ خطأ في إعداد النسخ الاحتياطي:', err.message);
+      }
+    }
+
+    // Calculate milliseconds until next 3:00 AM
+    const now     = new Date();
+    const next3AM = new Date(now);
+    next3AM.setHours(3, 0, 0, 0);
+    if (next3AM <= now) {
+      next3AM.setDate(next3AM.getDate() + 1);
+    }
+    const msUntil = next3AM.getTime() - now.getTime();
+
+    setTimeout(() => {
+      runBackup(); // first run at 3:00 AM
+      setInterval(runBackup, 24 * 60 * 60 * 1000); // then every 24 hours
+    }, msUntil);
+
+    console.log(
+      `[Backup] 📅 النسخة الاحتياطية القادمة الساعة 03:00 صباحاً` +
+      ` (بعد ${Math.round(msUntil / 3600000)} ساعة)`
+    );
+  }
+
+  // --- Automated Periodic JSON database backup ---
+  function runJsonBackup(): void {
+    try {
+      const backupDir = path.join(process.cwd(), 'data', 'backups', 'json');
+      if (!fs.existsSync(backupDir)) {
+        fs.mkdirSync(backupDir, { recursive: true });
+      }
+
+      const subscribers = db.prepare('SELECT * FROM subscribers').all() as any[];
+      const routers = db.prepare('SELECT * FROM routers').all() as any[];
+      const profiles = db.prepare('SELECT * FROM profiles').all() as any[];
+
+      const exportData = {
+        exportedAt: new Date().toISOString(),
+        generator: 'SuperSAS v4 Periodic Database Export',
+        subscribers,
+        routers,
+        profiles
+      };
+
+      const dateStr = new Date().toISOString().replace(/[:.]/g, '-'); // e.g. 2026-06-04T00-26-23-000Z
+      const filename = `backup-json-${dateStr}.json`;
+      const backupPath = path.join(backupDir, filename);
+      
+      fs.writeFileSync(backupPath, JSON.stringify(exportData, null, 2), 'utf8');
+      console.log(`[Backup JSON] ✅ Periodic JSON backup created successfully: ${backupPath}`);
+
+      // Update settings table with last run timestamp
+      db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)")
+        .run('backup_json_last_run', new Date().toISOString());
+
+      // Clean up excess periodic JSON backups, e.g. keep last 20
+      const files = fs.readdirSync(backupDir)
+        .filter((f: string) => f.startsWith('backup-json-') && f.endsWith('.json'))
+        .sort(); // alphabetical sort is chronological for ISO strings
+      while (files.length > 20) {
+        const oldFile = files.shift()!;
+        fs.unlinkSync(path.join(backupDir, oldFile));
+        console.log(`[Backup JSON] 🗑️ Deleted old periodic JSON backup: ${oldFile}`);
+      }
+
+      // Write a system log
+      const logId = crypto.randomUUID();
+      db.prepare(`
+        INSERT INTO logs (id, timestamp, type, category, message, details)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(
+        logId,
+        new Date().toISOString(),
+        'system',
+        'success',
+        `نسخ احتياطي دوري JSON ناجح`,
+        `تم تصدير قسيمة قاعدة البيانات (${subscribers.length} مشترك و ${routers.length} راوتر) تلقائياً وحفظها كملف مجلد تحت اسم ${filename}.`
+      );
+
+    } catch (error: any) {
+      console.error('[Backup JSON] ❌ Error during JSON Backup:', error.message);
+    }
+  }
+
+  function checkAndRunJsonBackup(): void {
+    try {
+      const rows = db.prepare('SELECT * FROM settings').all() as any[];
+      const settings: any = {};
+      rows.forEach((r: any) => {
+        settings[r.key] = r.value;
+      });
+
+      const enabled = settings.backup_json_enabled === 'true';
+      if (!enabled) return;
+
+      const interval = settings.backup_json_interval || 'daily';
+      const lastRunStr = settings.backup_json_last_run;
+
+      let intervalMs = 24 * 60 * 60 * 1000; // default Daily
+      if (interval === 'hourly') intervalMs = 60 * 60 * 1000;
+      else if (interval === '12hr') intervalMs = 12 * 60 * 60 * 1000;
+      else if (interval === 'daily') intervalMs = 24 * 60 * 60 * 1000;
+      else if (interval === 'weekly') intervalMs = 7 * 24 * 60 * 60 * 1000;
+
+      const now = Date.now();
+      let shouldRun = false;
+
+      if (!lastRunStr) {
+        shouldRun = true;
+      } else {
+        const lastRun = new Date(lastRunStr).getTime();
+        if (now - lastRun >= intervalMs) {
+          shouldRun = true;
+        }
+      }
+
+      if (shouldRun) {
+        console.log('[Backup JSON] ⏰ Running scheduled JSON backup...');
+        runJsonBackup();
+      }
+    } catch (error: any) {
+      console.error('[Backup JSON] ❌ Error checking periodic JSON backup:', error.message);
+    }
+  }
+
+  // Trigger check every 1 minute
+  setInterval(checkAndRunJsonBackup, 60 * 1000);
+
+  // Run initial check 10 seconds after startup
+  setTimeout(checkAndRunJsonBackup, 10000);
+
+  scheduleDailyBackup();
 }
