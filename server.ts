@@ -9,11 +9,15 @@ import dotenv from 'dotenv';
 // Import database, encryption and auth layers
 import db, { initDb, encrypt, decrypt } from './server/db';
 import { requireAdminAuth, verifyAdminLogin, generateToken, AdminPayload } from './server/auth';
+import cors from 'cors';
+import rateLimit from 'express-rate-limit';
+import { startCronJobs } from './server/cron';
 
 dotenv.config();
 
 // Ensure Database schema is ready on first boot
 initDb();
+startCronJobs(db, decrypt);
 
 // RouterOS REST Request Helper Supporting SSL options and timeout limits
 function requestRouterOS(options: {
@@ -88,10 +92,17 @@ function requestRouterOS(options: {
 
 async function startServer() {
   const app = express();
+  app.set('trust proxy', 1);
   const PORT = 3000;
 
   // Body parser
   app.use(express.json({ limit: '10mb' }));
+
+  // CORS Configuration
+  app.use(cors({
+    origin: process.env.ALLOWED_ORIGIN || 'http://localhost:5173',
+    credentials: true
+  }));
 
   // Helper to log system events programmatically inside SQL
   function logToSql(type: string, category: string, message: string, details?: string) {
@@ -117,7 +128,12 @@ async function startServer() {
   // ==========================================
 
   // POST /api/auth/login
-  app.post('/api/auth/login', (req, res) => {
+  const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    message: { error: 'تم تجاوز الحد المسموح لمحاولات تسجيل الدخول. حاول بعد 15 دقيقة.' }
+  });
+  app.post('/api/auth/login', loginLimiter, (req, res) => {
     try {
       const { username, password } = req.body;
       if (!username || !password) {
