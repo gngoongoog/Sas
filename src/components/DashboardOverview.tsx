@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSystem } from '../context/SystemContext';
 import { SystemResourceGauges } from './SystemResourceGauges';
+import { DashboardSubscriberConsole } from './DashboardSubscriberConsole';
 import { 
   Users, 
   Activity, 
@@ -327,7 +328,13 @@ export const DashboardOverview: React.FC = () => {
     disconnectSession,
     profiles,
     routers,
-    addLog
+    addLog,
+    addSubscriber,
+    updateSubscriber,
+    deleteSubscriber,
+    renewSubscriber,
+    toggleSubscriberStatus,
+    syncSubscriberToRouter
   } = useSystem();
 
   const [refreshing, setRefreshing] = useState(false);
@@ -586,6 +593,9 @@ export const DashboardOverview: React.FC = () => {
 
       {/* Real-time MikroTik CPU / RAM Resources monitoring */}
       <RouterRealtimeMonitor routers={routers} />
+
+      {/* Interactive Central PPPoE Subscriber Controller Console */}
+      <DashboardSubscriberConsole />
 
       {/* Advanced Interactive Diagnostic Terminal Hub */}
       <div className="bg-slate-900 text-slate-100 p-6 rounded-2xl border border-slate-800 shadow-xl relative overflow-hidden">

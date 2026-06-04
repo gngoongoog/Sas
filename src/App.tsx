@@ -111,7 +111,7 @@ function AppContent() {
               <ShieldCheck className="w-10 h-10 animate-pulse" />
             </div>
             <div>
-              <h1 className="text-white font-black text-2xl font-sans tracking-tight">منظومة SuperSAS v4</h1>
+              <h1 className="text-white font-black text-2xl font-sans tracking-tight">مشتركين چنچون</h1>
               <span className="inline-block mt-1 text-[11px] font-bold text-slate-500 tracking-widest uppercase bg-slate-950 border border-slate-850 px-3 py-1 rounded-full">
                 نظام إدارة المشتركين والتحكم بـ RADIUS وسيرفرات الماك
               </span>
@@ -208,7 +208,7 @@ function AppContent() {
           <PwaInstallPrompt />
 
           <div className="text-center text-[10px] text-slate-600 font-mono">
-            بوابة الإدارة المركزية SuperSAS المشفرة لحماية الكروت والمشتركين © {new Date().getFullYear()}
+            بوابة الإدارة المركزية لمشتركي چنچون لحماية الكروت والمستخدمين © {new Date().getFullYear()}
           </div>
 
         </div>
@@ -224,11 +224,11 @@ function AppContent() {
         <div>
           {/* Main Logo and name Header */}
           <div className="p-6 flex items-center gap-3 border-b border-slate-800 bg-slate-900/50">
-            <div className="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-blue-500/20 font-sans animate-pulse">
-              SAS
+            <div className="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-blue-500/20 font-sans animate-pulse">
+              چنچون
             </div>
             <div>
-              <h1 className="text-white font-bold text-base leading-tight font-sans">SuperSAS v4</h1>
+              <h1 className="text-white font-bold text-base leading-tight font-sans">مشتركين چنچون</h1>
               <span className="inline-block px-2 py-0.5 mt-1 bg-slate-950 border border-slate-800 text-[9px] font-mono text-slate-400 rounded-full">
                 SQLite Fullstack Real-Time
               </span>

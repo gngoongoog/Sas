@@ -1,6 +1,6 @@
 {
-  "name": "SuperSAS MikroTik PPPoE Manager",
-  "description": "نظام متكامل متطور شبيه بـ SAS4 لإدارة اشتراكات الإنترنت، توليد الكروت، التحكم بمستخدمي PPPoE ومزامنة أوامر السكريبت وأجهزة مايكروتك بأسلوب عصري وأداء فائق.",
+  "name": "Chanchon Subscribers PPPoE Manager",
+  "description": "نظام مشتركين چنچون المتكامل لإدارة واشتراكات إنترنت مايكروتك وراديوس، وتوليد الكروت والتحكم بمستخدمي PPPoE بأسلوب عصري وأداء فائق.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

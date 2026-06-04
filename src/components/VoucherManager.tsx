@@ -358,7 +358,7 @@ export const VoucherManager: React.FC = () => {
                   <div className="flex justify-between items-start border-b border-slate-100 pb-2 mb-2">
                     <div className="flex items-center gap-1.5 text-blue-600 font-bold text-xs font-sans">
                       <Sparkles className="w-3.5 h-3.5 text-blue-600" />
-                      <span>كارت شحن سوبر ساس</span>
+                      <span>كارت شحن مشتركين چنچون</span>
                     </div>
                     <span className="text-[10px] text-slate-400 font-sans">S/N: {c.serial}</span>
                   </div>

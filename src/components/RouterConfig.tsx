@@ -248,7 +248,7 @@ export const RouterConfig: React.FC = () => {
                         alert('عذراً: لا يمكن إزالة السيرفر لوجود مستخدمين وعملاء مربوطين به حالياً.');
                         return;
                       }
-                      if (confirm(`هل أنت واثق من مسح السيرفر المايكروتك [${r.name}] من لوحة SuperSAS؟`)) {
+                      if (confirm(`هل أنت واثق من مسح السيرفر المايكروتك [${r.name}] من لوحة مشتركين چنچون؟`)) {
                         deleteRouter(r.id);
                       }
                     }}
@@ -271,7 +271,7 @@ export const RouterConfig: React.FC = () => {
           <div>
             <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5 font-sans">
               <Network className="w-4.5 h-4.5 text-blue-600" />
-              منظومة المزامنة ومخطط العقد والموجهات لـ SuperSAS
+              منظومة المزامنة ومخطط العقد والموجهات لـ مشتركين چنچون
             </h3>
             <p className="text-[11px] text-slate-500 mt-1">توضح هذه الخريط الاتصال المنطقي بين عقدة راديوس السيرفر المركزي وأنودات أجهزة المايكروتك التي تراقبها. اضغط على أي موجه لمعاينة نبض البيانات التلسكوبية اللحظية.</p>
           </div>
@@ -294,7 +294,7 @@ export const RouterConfig: React.FC = () => {
                 <span className="text-[11px] text-slate-200 font-bold bg-slate-950 px-2.5 py-1 rounded-full border border-slate-850 mt-2 filter backdrop-blur-md">
                   سيرفر البوابة الرئيسي
                 </span>
-                <span className="text-[9px] text-blue-450 font-mono mt-0.5">SuperSAS Radius v4.0</span>
+                <span className="text-[9px] text-blue-450 font-mono mt-0.5">چنچون Radius v4.0</span>
               </div>
 
               {/* Connecting Web lines to client routers */}
@@ -588,7 +588,7 @@ export const RouterConfig: React.FC = () => {
                   أمان مستقر بنسبة 100% دون فتح بورتات (No Port Forwarding)
                 </div>
                 <h3 className="text-xl md:text-2xl font-black font-sans leading-tight">
-                  دليل الوصول عن بعد للوحة SuperSAS والمايكروتك من أي مكان
+                  دليل الوصول عن بعد للوحة مشتركين چنچون والمايكروتك من أي مكان
                 </h3>
                 <p className="text-slate-300 text-xs leading-relaxed font-sans">
                   هل قمت بتشغيل المنظومة على **Mini PC** داخل برجك أو مكتبك وتود التحكم بالكامل بلوحة المشتركين وتفعيل الكروت للمشترك المنتهي من بيتك أو هاتفك؟
@@ -813,7 +813,7 @@ export const RouterConfig: React.FC = () => {
                         <p>👍 **مبروك! نجحت العملية بالكامل.** للوصول المباشر الآن والتحكم من البيت:</p>
                         <ol className="list-decimal list-inside space-y-1 pr-1">
                           <li>قم بتنزيل برنامج <b>Tailscale</b> على هاتفك أو كمبيوترك في المنزل وسجل الدخول بنفس الحساب.</li>
-                          <li>للدخول إلى لوحة تحكم <b>SuperSAS</b> من المنزل: افتح المتصفح واكتب الـ IP الخاص بالـ Mini PC (مثال: <code>http://100.99.88.77:3000</code>).</li>
+                          <li>للدخول إلى لوحة تحكم <b>مشتركين چنچون</b> من المنزل: افتح المتصفح واكتب الـ IP الخاص بالـ Mini PC (مثال: <code>http://100.99.88.77:3000</code>).</li>
                           <li>للدخول بسيرفر المايكروتك أو الـ <b>Winbox</b>: افتح الـ Winbox بالبيت واكتب الـ IP المحلي للسيرفر في برجك مباشرة (مثال <code>{vpnSubnet.split('/')[0].replace('.0', '.1')}</code>) وسيعمل فوراً وبسرعة فائقة تفوق الخيال!</li>
                         </ol>
                       </div>
@@ -923,7 +923,7 @@ export const RouterConfig: React.FC = () => {
                         <h5 className="font-bold text-slate-800 font-sans">استمتع بتسهيل العمل فورا</h5>
                       </div>
                       <p className="text-slate-500 leading-relaxed pr-7">
-                        الآن، ثبّت تطبيق ZeroTier على جوالك أو حاسوبك بالمنزل، انضم لنفس الـ Network ID، وافتح لوحة تحكم SuperSAS من أي ثغرة في العالم آمنة، دون منفردات Port Forward.
+                        الآن، ثبّت تطبيق ZeroTier على جوالك أو حاسوبك بالمنزل، انضم لنفس الـ Network ID، وافتح لوحة تحكم مشتركين چنچون من أي ثغرة في العالم آمنة، دون منفردات Port Forward.
                       </p>
                     </div>
 
