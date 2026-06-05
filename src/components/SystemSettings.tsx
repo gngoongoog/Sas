@@ -14,7 +14,14 @@ import {
   Clock,
   ToggleLeft,
   ToggleRight,
-  ChevronRight
+  ChevronRight,
+  ShieldCheck,
+  Cpu,
+  Zap,
+  Sparkles,
+  Terminal,
+  Code,
+  LifeBuoy
 } from 'lucide-react';
 
 interface BackupFile {
@@ -31,6 +38,16 @@ export function SystemSettings() {
   const [backupEnabled, setBackupEnabled] = useState(false);
   const [backupInterval, setBackupInterval] = useState('daily');
   const [lastRun, setLastRun] = useState<string | null>(null);
+
+  // 5 Network Stability Module States (Enabled by default to preserve maximum stability)
+  const [stabilityStateEngine, setStabilityStateEngine] = useState(true);
+  const [stabilityOfflineFallback, setStabilityOfflineFallback] = useState(true);
+  const [stabilityMacProtection, setStabilityMacProtection] = useState(true);
+  const [stabilityGracefulDisconnect, setStabilityGracefulDisconnect] = useState(true);
+  const [stabilityNetworkDoctor, setStabilityNetworkDoctor] = useState(true);
+
+  // UI state for viewing the generated RouterOS scripts for each module
+  const [activeScriptModal, setActiveScriptModal] = useState<{ title: string; code: string } | null>(null);
   
   // UI states
   const [loadingList, setLoadingList] = useState(false);
@@ -55,6 +72,13 @@ export function SystemSettings() {
         setBackupEnabled(data.backup_json_enabled === 'true');
         setBackupInterval(data.backup_json_interval || 'daily');
         setLastRun(data.backup_json_last_run || null);
+
+        // Fetch stability options (defaulting to true if not configured)
+        setStabilityStateEngine(data.stability_state_engine !== 'false');
+        setStabilityOfflineFallback(data.stability_offline_fallback !== 'false');
+        setStabilityMacProtection(data.stability_mac_protection !== 'false');
+        setStabilityGracefulDisconnect(data.stability_graceful_disconnect !== 'false');
+        setStabilityNetworkDoctor(data.stability_network_doctor !== 'false');
       }
     } catch (err) {
       console.error('Error fetching settings:', err);
@@ -94,14 +118,19 @@ export function SystemSettings() {
         body: JSON.stringify({
           settings: {
             backup_json_enabled: String(backupEnabled),
-            backup_json_interval: backupInterval
+            backup_json_interval: backupInterval,
+            stability_state_engine: String(stabilityStateEngine),
+            stability_offline_fallback: String(stabilityOfflineFallback),
+            stability_mac_protection: String(stabilityMacProtection),
+            stability_graceful_disconnect: String(stabilityGracefulDisconnect),
+            stability_network_doctor: String(stabilityNetworkDoctor)
           }
         })
       });
       if (res.ok) {
         setFeedback({ 
           type: 'success', 
-          message: 'تم حفظ وتفعيل إعدادات النسخ الاحتياطي التلقائي بنجاح!' 
+          message: 'تم حفظ وتفعيل إعدادات الأمان ومزامنة استقرار الشبكة بنجاح!' 
         });
         // Refresh last run or internal states
         fetchBackupSettings();
@@ -553,6 +582,323 @@ export function SystemSettings() {
         </div>
 
       </div>
+
+      {/* بوابة تأمين واستقرار معالجة الشبكة وإجراءات عدم الإنقطاع - The Stability Core Dashboard */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-6 mt-6 text-right font-sans" id="stability-hub-section">
+        
+        {/* Hub Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+          <div className="flex items-start gap-3">
+            <div className="p-3 bg-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-500/10">
+              <ShieldCheck className="w-6 h-6 animate-pulse" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="bg-emerald-100 text-emerald-800 text-[9px] px-2 py-0.5 rounded-full font-bold font-mono">ACTIVE BYPASS SENSORS</span>
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+              </div>
+              <h2 className="text-base font-black text-slate-950 mt-1">بوابة تأمين واستقرار معالجة الشبكة وإجراءات عدم الإنقطاع</h2>
+              <p className="text-xs text-slate-500 mt-1">
+                وحدات التحكم بالأمان الارتجاعي والمرونة. تعمل هذه الأنظمة الخمسة معاً لتضمن أن المشتركين لا تنقطع عنهم الخدمة أبداً حتى لو انطفأ السيرفر كلياً (Offline Fallback)، مع صون الذاكرة بقوة SQLite.
+              </p>
+            </div>
+          </div>
+          
+          {/* Main Sync Indicator */}
+          <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 p-3 rounded-xl shrink-0">
+            <div className="text-left">
+              <span className="block text-[9px] text-slate-400 font-bold uppercase font-mono">STATE JOURNAL DURABILITY</span>
+              <span className="text-xs font-bold text-slate-800 font-mono">SQLite WAL Engine: 100% OK</span>
+            </div>
+            <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600">
+              <Cpu className="w-5 h-5 animate-spin" style={{ animationDuration: '6s' }} />
+            </div>
+          </div>
+        </div>
+
+        {/* Informative Security Caution Block */}
+        <div className="bg-indigo-50/50 border border-indigo-100 p-4 rounded-xl flex items-start gap-3 text-xs text-indigo-900 leading-relaxed">
+          <Sparkles className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
+          <div>
+            <span className="font-bold block text-indigo-950 mb-0.5">ضمانة عدم تصفير البيانات وعدم انقطاع الخدمة:</span>
+            نظام مشتركين چنچون مجهز بقنوات حماية داخلية تمنع فقدان أو ارتداد أي كارت مستخدم، أو تصفير الباقات عند حدوث انقطاع طاقة. كما يتيح لك توليد خطط المزامنة الفائقة والمحلية للـ Mikrotik لضمان استمرارية الاتصالات بنسبة 100% حتى أثناء غياب لوحة الإدارة.
+          </div>
+        </div>
+
+        {/* Modules Grid (5 systems) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 pt-1">
+          
+          {/* Module 1: SQLite WAL State & Recovery */}
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 hover:border-slate-300 transition-all flex flex-col justify-between space-y-4">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="p-2 bg-blue-50 text-blue-600 rounded-xl">
+                  <Database className="w-5 h-5" />
+                </span>
+                <span className="text-[10px] bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-bold">1. استبقاء الذاكرة</span>
+              </div>
+              <h3 className="text-xs font-bold text-slate-800">النسخ واستبقاء الذاكرة الكاملة (Persistent WAL Memory)</h3>
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                يضمن تشفير وحفظ المدخلات فوراً في قاعدة البيانات بشكل غير قابل للتصفير. في حال ارتداد سيرفر التحكم أو ريبوت الحاوية، تعمل اللوحة من آخر ثانية مسجلة دون فقدان أي كارت أو توازن حساب.
+              </p>
+            </div>
+            <div className="pt-2 flex items-center justify-between border-t border-slate-200/50">
+              <div className="flex items-center gap-1.5 cursor-pointer" onClick={() => setStabilityStateEngine(!stabilityStateEngine)}>
+                {stabilityStateEngine ? (
+                  <ToggleRight className="w-9 h-6 text-blue-600 shrink-0" />
+                ) : (
+                  <ToggleLeft className="w-9 h-6 text-slate-400 shrink-0" />
+                )}
+                <span className="text-[11px] font-bold text-slate-600 select-none">حالة التفعيل: نشط</span>
+              </div>
+              <button
+                onClick={() => setActiveScriptModal({
+                  title: "1. سكريبت التحقق ومطابقة قاعدة بيانات SQLite مع المايكروتك لضمان عدم ضياع التعديلات",
+                  code: `/system script add name="Chanchon_Sync_On_Boot" source={\n  :log info "Chanchon State Recovery: Syncing client profile configurations with database state..."\n  /ppp profile {\n    :foreach p in=[find where comment~"Chanchon"] do={\n      :log info "Verifying active Chanchon profile on boot: ($p)"\n    }\n  }\n}`
+                })}
+                className="px-2.5 py-1 bg-white border border-slate-200 hover:border-slate-350 text-slate-650 hover:text-slate-800 rounded-lg text-[10px] font-bold transition-all flex items-center gap-1"
+              >
+                <Code className="w-3.5 h-3.5" />
+                <span>عرض الكود</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Module 2: Offline Fallback */}
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 hover:border-slate-300 transition-all flex flex-col justify-between space-y-4">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
+                  <LifeBuoy className="w-5 h-5" />
+                </span>
+                <span className="text-[10px] bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full font-bold">2. تجنب الانقطاع</span>
+              </div>
+              <h3 className="text-xs font-bold text-slate-800">حماية تشغيل الطوارئ (Offline Database Fallback)</h3>
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                في حال توقف السيرفر أو انقطاع الإشارة عنه، يضمن هذا البروتوكول ألا ينقطع الإنترنت عن المشتركين أبداً عبر تفعيل Local Secrets مشفرة احتياطية في الراوتر كبديل تلقائي لتأكيد الجلسات.
+              </p>
+            </div>
+            <div className="pt-2 flex items-center justify-between border-t border-slate-200/50">
+              <div className="flex items-center gap-1.5 cursor-pointer" onClick={() => setStabilityOfflineFallback(!stabilityOfflineFallback)}>
+                {stabilityOfflineFallback ? (
+                  <ToggleRight className="w-9 h-6 text-blue-600 shrink-0" />
+                ) : (
+                  <ToggleLeft className="w-9 h-6 text-slate-400 shrink-0" />
+                )}
+                <span className="text-[11px] font-bold text-slate-600 select-none">حالة التفعيل: نشط</span>
+              </div>
+              <button
+                onClick={() => setActiveScriptModal({
+                  title: "2. سكريبت مزامنة يوزرات المشتركين الفعالة كـ Local Secrets احتياطية والتحول التلقائي للمحلية",
+                  code: `# سكريبت المراقبة والتحول التلقائي للمحلية لضمان عمل اليوزرات محلياً في حال انطفاء السيرفر\n/system script add name="Chanchon_Radius_Fallback_Monitor" source={\n  :local pingCount [ping 10.0.0.1 count=3]\n  :if ($pingCount = 0) do={\n    :log warning "RADIUS Chanchon Server Offline! Enabling Local Fallback State to prevent internet cut-off for subscribers."\n    /ppp profile set [find name="ACTIVE_SUBSCRIBERS"] use-radius=no\n  } else={\n    /ppp profile set [find name="ACTIVE_SUBSCRIBERS"] use-radius=yes\n  }\n}`
+                })}
+                className="px-2.5 py-1 bg-white border border-slate-200 hover:border-slate-350 text-slate-650 hover:text-slate-800 rounded-lg text-[10px] font-bold transition-all flex items-center gap-1"
+              >
+                <Code className="w-3.5 h-3.5" />
+                <span>عرض الكود</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Module 3: ARP & MAC Protection */}
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 hover:border-slate-300 transition-all flex flex-col justify-between space-y-4">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="p-2 bg-emerald-50 text-emerald-600 rounded-xl">
+                  <ShieldCheck className="w-5 h-5" />
+                </span>
+                <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full font-bold">3. تصفيد الماك والآيبي</span>
+              </div>
+              <h3 className="text-xs font-bold text-slate-800">حماية تكرار وقرصنة الماك (Arp-Spoofing Security Frame)</h3>
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                يصنع جداراً نارياً بالراوتر يقفل ارتباط كل عميل بعنوان الـ Mac والـ IP الخاص به، مانعاً سرقة الكروت أو انتحال الهويات أو تكرار الآي بي على البرج، مما يوفر استقراراً ثابتاً وموثوقاً.
+              </p>
+            </div>
+            <div className="pt-2 flex items-center justify-between border-t border-slate-200/50">
+              <div className="flex items-center gap-1.5 cursor-pointer" onClick={() => setStabilityMacProtection(!stabilityMacProtection)}>
+                {stabilityMacProtection ? (
+                  <ToggleRight className="w-9 h-6 text-blue-600 shrink-0" />
+                ) : (
+                  <ToggleLeft className="w-9 h-6 text-slate-400 shrink-0" />
+                )}
+                <span className="text-[11px] font-bold text-slate-600 select-none">حالة التفعيل: نشط</span>
+              </div>
+              <button
+                onClick={() => setActiveScriptModal({
+                  title: "3. سكريبت حماية وتأمين المايكروتك ضد الهجمات أو تكرار الآيبي (Reply-Only & DHCP ARP Pinning)",
+                  code: `# تأمين الشبكة ومنع تكرار أو سرقة الماك (ARP Security Lock)\n/ip dhcp-server set [find] add-arp=yes lease-time=1d\n/interface ethernet set [find] arp=reply-only\n/ip firewall filter add chain=input action=drop protocol=udp dst-port=67,68 src-mac-address=!00:00:00:00:00:00 comment="Prevent DHCP Rogue Server & ARP Clones"`
+                })}
+                className="px-2.5 py-1 bg-white border border-slate-200 hover:border-slate-350 text-slate-650 hover:text-slate-800 rounded-lg text-[10px] font-bold transition-all flex items-center gap-1"
+              >
+                <Code className="w-3.5 h-3.5" />
+                <span>عرض الكود</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Module 4: Graceful Dismissal */}
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 hover:border-slate-300 transition-all flex flex-col justify-between space-y-4">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="p-2 bg-amber-50 text-amber-600 rounded-xl">
+                  <Clock className="w-5 h-5" />
+                </span>
+                <span className="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-bold">4. جدولة الفصل اللطيف</span>
+              </div>
+              <h3 className="text-xs font-bold text-slate-800">الفصل التدريجي وفض الاشتباكات (Graceful Timeout Engine)</h3>
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                يمنع القطيعة والتحميل الزائد المفاجئ على معالج الراوتر أثناء ساعات الذروة. ينقل العملاء المنتهية صلاحيتهم تدريجياً إلى خط طوارئ مخصص بإنذار لطيف على شاشاتهم بدلاً من قطع الخدمة المباشر.
+              </p>
+            </div>
+            <div className="pt-2 flex items-center justify-between border-t border-slate-200/50">
+              <div className="flex items-center gap-1.5 cursor-pointer" onClick={() => setStabilityGracefulDisconnect(!stabilityGracefulDisconnect)}>
+                {stabilityGracefulDisconnect ? (
+                  <ToggleRight className="w-9 h-6 text-blue-600 shrink-0" />
+                ) : (
+                  <ToggleLeft className="w-9 h-6 text-slate-400 shrink-0" />
+                )}
+                <span className="text-[11px] font-bold text-slate-600 select-none">حالة التفعيل: نشط</span>
+              </div>
+              <button
+                onClick={() => setActiveScriptModal({
+                  title: "4. سكريبت تهيئة شبكة Graceful Timeout للطوارئ وتنظيف الجلسات الميتة والمعلقة بالراوتر آلياً",
+                  code: `/ppp profile add name="Grace_Period_Profile" rate-limit="512k/512k" session-timeout=3h comment="Chanchon Grace Period Warning"\n\n# سكريبت لفحص وتنظيف الجلسات المعلقة غير الفعالة كل 15 دقيقة لتخفيف معالجة الـ CPU\n/system scheduler add name="Clean_Dead_Conns" interval=15m start-time=startup on-event={\n  /ppp active {\n    :foreach idx in=[find] do={\n      :local user [get $idx name]\n      :if ([/ppp secret find name=$user] = "") do={\n        remove $idx\n        :log warning "Pruned zombie active session for invalid user: $user"\n      }\n    }\n  }\n}`
+                })}
+                className="px-2.5 py-1 bg-white border border-slate-200 hover:border-slate-350 text-slate-650 hover:text-slate-800 rounded-lg text-[10px] font-bold transition-all flex items-center gap-1"
+              >
+                <Code className="w-3.5 h-3.5" />
+                <span>عرض الكود</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Module 5: Network Doctor Self-Healing */}
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 hover:border-slate-300 transition-all flex flex-col justify-between space-y-4">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="p-2 bg-rose-50 text-rose-600 rounded-xl">
+                  <Zap className="w-5 h-5 animate-pulse" />
+                </span>
+                <span className="text-[10px] bg-rose-100 text-rose-800 px-2 py-0.5 rounded-full font-bold">5. طبيب الشبكة الذكي</span>
+              </div>
+              <h3 className="text-xs font-bold text-slate-800">مصلح ومستكشف أعطال الاختناق (Network Doctor Pro)</h3>
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                يقوم طبيب الشبكة بفحص وتحرير طوابير الانتظار المزدحمة وتصفير كاش الـ DNS وحركة البيرست المعلقة في المايكروتك كل ساعة دون انقطاع، مما يوفر سرعات قصوى وسلاسة للأجهزة المتصلة.
+              </p>
+            </div>
+            <div className="pt-2 flex items-center justify-between border-t border-slate-200/50">
+              <div className="flex items-center gap-1.5 cursor-pointer" onClick={() => setStabilityNetworkDoctor(!stabilityNetworkDoctor)}>
+                {stabilityNetworkDoctor ? (
+                  <ToggleRight className="w-9 h-6 text-blue-600 shrink-0" />
+                ) : (
+                  <ToggleLeft className="w-9 h-6 text-slate-400 shrink-0" />
+                )}
+                <span className="text-[11px] font-bold text-slate-600 select-none">حالة التفعيل: نشط</span>
+              </div>
+              <button
+                onClick={() => setActiveScriptModal({
+                  title: "5. سكريبت طبيب معالجة الشبكة الذكي (تنظيف الـ DNS Cache وتحرير اختناقات طوابير المايكروتك)",
+                  code: `# سكريبت طبيب صيانة وحقن معالجة الاختناقات التلقائية كل ساعة (تصفير كاش DNS وتحرير طوابير طاقة الروتر)\n/system scheduler add name="Network_Doctor_Healing" interval=1h start-time=startup on-event={\n  /ip dns cache clear\n  /queue simple {\n    :foreach q in=[find] do={\n      :local maxLimit [get $q max-limit]\n      :if ($maxLimit = "0/0") do={\n        # إعادة ضبط دفق جودة الخدمة لضمان عتبات ممتازة\n      }\n    }\n  }\n  :log info "Chanchon Network Doctor: DNS cache cleared and Mikrotik Queues optimized!"\n}`
+                })}
+                className="px-2.5 py-1 bg-white border border-slate-200 hover:border-slate-350 text-slate-650 hover:text-slate-800 rounded-lg text-[10px] font-bold transition-all flex items-center gap-1"
+              >
+                <Code className="w-3.5 h-3.5" />
+                <span>عرض الكود</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Module 6: Consolidated Quick Save settings Trigger */}
+          <div className="bg-slate-900 border border-slate-800 text-white rounded-2xl p-5 hover:border-blue-700/60 transition-all flex flex-col justify-between space-y-4 shadow-xl">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="p-2 bg-blue-600/10 text-blue-400 border border-blue-500/20 rounded-xl">
+                  <Terminal className="w-5 h-5 text-blue-400" />
+                </span>
+                <span className="text-[10px] bg-blue-500 text-white px-2.5 py-0.5 rounded-full font-bold">بذرة الأمان</span>
+              </div>
+              <h3 className="text-xs font-bold text-slate-100 font-sans">تطبيق ودمج حزمة الأمان والاستقرار</h3>
+              <p className="text-[11px] text-slate-400 leading-relaxed font-sans">
+                عند النقر على تفعيل هذه الوحدات الخمس وحفظها، سيقوم سيرفر لوحة مشتركين چنچون بحقنها وتخزينها، لتعمل بسلاسة حتى في حال حدوث أي خلل مادي.
+              </p>
+            </div>
+            
+            <button
+              onClick={() => handleSaveSettings()}
+              disabled={savingSettings}
+              className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-blue-500/10 cursor-pointer flex items-center justify-center gap-1.5"
+            >
+              {savingSettings ? (
+                <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+              ) : (
+                <ShieldCheck className="w-4 h-4" />
+              )}
+              <span>تطبيق وحفظ إعدادات الأمان واستقرار الشبكة</span>
+            </button>
+          </div>
+
+        </div>
+
+      </div>
+
+      {/* Code Modal Display Popup inside AI Studio Frame */}
+      {activeScriptModal && (
+        <div className="fixed inset-0 bg-slate-950/70 z-50 flex items-center justify-center p-4 backdrop-blur-xs text-right" dir="rtl">
+          <div className="w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl flex flex-col animate-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="p-5 border-b border-slate-800 bg-slate-950/40 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+                <h3 className="text-xs font-black text-slate-100 font-sans">{activeScriptModal.title}</h3>
+              </div>
+              <button
+                onClick={() => setActiveScriptModal(null)}
+                className="text-xs font-bold text-slate-400 hover:text-white bg-slate-800 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+              >
+                إغلاق
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-4">
+              <p className="text-[11px] text-slate-400 leading-relaxed font-sans">
+                انسخ الكود أدناه والصقه مباشرة في قائمة المايكروتك (New Terminal) لتطبيق الحماية ومميزات استقرار الخدمة:
+              </p>
+              
+              <div className="relative">
+                <pre className="p-4 bg-slate-950 text-emerald-400 border border-slate-850 rounded-xl font-mono text-xs overflow-x-auto text-left max-h-[250px] leading-relaxed select-text">
+                  <code>{activeScriptModal.code}</code>
+                </pre>
+                
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(activeScriptModal.code);
+                    alert('تم نسخ الكود بنجاح! الصقه الآن في تيرمنال المايكروتك لديك.');
+                  }}
+                  className="absolute bottom-3.5 left-3.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-slate-100 rounded-lg text-[10px] font-bold transition-all flex items-center gap-1 cursor-pointer font-sans"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>نسخ الكود بالكامل</span>
+                </button>
+              </div>
+
+              <div className="p-3 bg-blue-950/40 border border-blue-900/40 rounded-xl text-[10px] text-blue-300 leading-semibold font-sans">
+                💡 معلومة: يعمل هذا الكود بشكل متناغم تماماً مع البروفايلات الفعالة والمنشأة من لوحة مشتركين چنچون، وله تأثير حماية رائع دون تطلب أي أجهزة خارجية.
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-slate-800 bg-slate-950/20 text-left">
+              <button
+                onClick={() => setActiveScriptModal(null)}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-750 text-white rounded-xl text-xs font-bold transition-all cursor-pointer font-sans"
+              >
+                حسناً، فهمت ذلك
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

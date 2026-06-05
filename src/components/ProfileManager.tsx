@@ -43,7 +43,17 @@ export const ProfileManager: React.FC = () => {
     rateLimit: '', // "10M/10M" (Up / Down)
     addressList: '',
     price: 0,
-    validityDays: 30
+    validityDays: 30,
+    qosPriority: 8,
+    qosParentQueue: '',
+    qosBurstEnabled: false,
+    qosBurstLimit: '',
+    qosBurstThreshold: '',
+    qosBurstTime: '',
+    qosFastTrack: false,
+    qosAppsList: '', // e.g. "youtube,tiktok"
+    qosAppsRuleType: 'prioritize', // "prioritize" | "limit"
+    qosAppsLimitValue: '2M/2M'
   });
 
   // Navigation tab for Profile Manager internally
@@ -75,7 +85,17 @@ export const ProfileManager: React.FC = () => {
       rateLimit: '15M/15M',
       addressList: 'ACTIVE_SUBSCRIBERS',
       price: 15000,
-      validityDays: 30
+      validityDays: 30,
+      qosPriority: 8,
+      qosParentQueue: '',
+      qosBurstEnabled: false,
+      qosBurstLimit: '30M/30M',
+      qosBurstThreshold: '20M/20M',
+      qosBurstTime: '10s',
+      qosFastTrack: false,
+      qosAppsList: '',
+      qosAppsRuleType: 'prioritize',
+      qosAppsLimitValue: '2M/2M'
     });
     setModalOpen(true);
   };
@@ -89,9 +109,27 @@ export const ProfileManager: React.FC = () => {
       rateLimit: profile.rateLimit,
       addressList: profile.addressList,
       price: profile.price,
-      validityDays: profile.validityDays
+      validityDays: profile.validityDays,
+      qosPriority: profile.qosPriority || 8,
+      qosParentQueue: profile.qosParentQueue || '',
+      qosBurstEnabled: typeof profile.qosBurstEnabled === 'number' ? profile.qosBurstEnabled === 1 : !!profile.qosBurstEnabled,
+      qosBurstLimit: profile.qosBurstLimit || '30M/30M',
+      qosBurstThreshold: profile.qosBurstThreshold || '20M/20M',
+      qosBurstTime: profile.qosBurstTime || '10s',
+      qosFastTrack: typeof profile.qosFastTrack === 'number' ? profile.qosFastTrack === 1 : !!profile.qosFastTrack,
+      qosAppsList: profile.qosAppsList || '',
+      qosAppsRuleType: profile.qosAppsRuleType || 'prioritize',
+      qosAppsLimitValue: profile.qosAppsLimitValue || '2M/2M'
     });
     setModalOpen(true);
+  };
+
+  const handleAppToggle = (appId: string) => {
+    const currentApps = formData.qosAppsList ? formData.qosAppsList.split(',').filter(Boolean) : [];
+    const updatedApps = currentApps.includes(appId)
+      ? currentApps.filter(a => a !== appId)
+      : [...currentApps, appId];
+    setFormData(prev => ({ ...prev, qosAppsList: updatedApps.join(',') }));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -324,6 +362,69 @@ export const ProfileManager: React.FC = () => {
                       <div className="flex justify-between">
                         <span className="text-slate-400 font-sans">الأيام الصالحة (Validity Days):</span>
                         <span className="text-slate-800 font-sans">{p.validityDays} يوم</span>
+                      </div>
+
+                      {/* QoS configuration display wrapper */}
+                      <div className="flex flex-col gap-1 bg-slate-55 p-2 rounded-xl border border-slate-100 mt-2 font-sans text-[11px]">
+                        <div className="flex justify-between items-center text-slate-500">
+                          <span className="font-bold text-slate-700 flex items-center gap-1">⚡ جودة الخدمة QoS:</span>
+                          <span className={`${p.qosPriority && p.qosPriority !== 8 ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600'} text-[9px] font-mono px-2 py-0.5 rounded-full font-bold`}>
+                            أولوية: {p.qosPriority || 8}
+                          </span>
+                        </div>
+                        {p.qosParentQueue && (
+                          <div className="flex justify-between mt-1 text-[10px] text-slate-500">
+                            <span>الـ Queue الأب (Parent):</span>
+                            <span className="font-mono font-bold text-slate-800">{p.qosParentQueue}</span>
+                          </div>
+                        )}
+                        {p.qosBurstEnabled ? (
+                          <div className="mt-1 flex flex-col gap-0.5 text-[9px] bg-white p-1.5 rounded-lg border border-slate-150 text-slate-500">
+                            <span className="text-blue-600 font-bold">🚀 تعزيز التحميل المؤقت (Burst):</span>
+                            <div className="grid grid-cols-3 gap-1 font-mono text-[9px] text-slate-600 mt-1 text-center bg-slate-50 p-1 rounded">
+                              <div>الحد: {p.qosBurstLimit}</div>
+                              <div>العتبة: {p.qosBurstThreshold}</div>
+                              <div>المدة: {p.qosBurstTime}</div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-[9px] text-slate-400 mt-0.5 italic">وضع الـ Burst (الرفع المؤقت) معطل</div>
+                        )}
+                        <div className="flex justify-between items-center mt-1 text-[9px]">
+                          <span className="text-slate-500">تجاوز الفايروال (FastTrack):</span>
+                          <span className={`font-semibold ${p.qosFastTrack ? 'text-emerald-600 bg-emerald-50 px-1 rounded' : 'text-slate-500 bg-slate-100 px-1 rounded'}`}>
+                            {p.qosFastTrack ? 'نشط (تجاوز)' : 'معطل (تحت السيطرة)'}
+                          </span>
+                        </div>
+
+                        {/* Custom apps-specific QoS lists details block */}
+                        {p.qosAppsList && p.qosAppsList.split(',').filter(Boolean).length > 0 && (
+                          <div className="mt-2 text-[9px] border-t border-slate-100 pt-1.5 space-y-1">
+                            <div className="flex justify-between text-slate-500 font-semibold mb-1">
+                              <span>🎯 تطبيقات QoS مخصصة ({p.qosAppsList.split(',').filter(Boolean).length}):</span>
+                              <span className={`px-1.5 rounded-full font-bold ${p.qosAppsRuleType === 'prioritize' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                                {p.qosAppsRuleType === 'prioritize' ? '🚀 تسريع فائق' : `⏳ تحجيم (${p.qosAppsLimitValue})`}
+                              </span>
+                            </div>
+                            <div className="flex flex-wrap gap-1">
+                              {p.qosAppsList.split(',').filter(Boolean).map((app) => {
+                                let label = app;
+                                if (app === 'youtube') label = '🎬 يوتيوب';
+                                else if (app === 'tiktok') label = '🎵 تيكتوك';
+                                else if (app === 'facebook') label = '👥 فيسبوك/إنستغرام';
+                                else if (app === 'whatsapp') label = '💬 واتساب/تليجرام';
+                                else if (app === 'gaming') label = '🎮 ألعاب/ببجي';
+                                else if (app === 'netflix') label = '🍿 نتفلكس وبث';
+
+                                return (
+                                  <span key={app} className="px-1.5 py-0.5 bg-slate-100 text-slate-750 border border-slate-200 rounded-md font-sans text-[8px] font-bold">
+                                    {label}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -944,11 +1045,188 @@ export const ProfileManager: React.FC = () => {
                 </div>
               </div>
 
+              {/* Advanced QoS Controls Section */}
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-150 space-y-3">
+                <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1 font-sans">
+                  ⚡ إعدادات جودة الخدمة والمزامنة الفائقة (MicroTik QoS Setup)
+                </h4>
+                
+                <div className="grid grid-cols-2 gap-3 text-right">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-650 mb-1 font-sans">أولوية حركة البيانات (Queue Priority)</label>
+                    <select
+                      value={formData.qosPriority}
+                      onChange={(e) => setFormData(prev => ({ ...prev, qosPriority: Number(e.target.value) }))}
+                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-sans font-semibold text-slate-700 outline-none"
+                    >
+                      <option value={1}>1 - أولوية مطلقة (أغنى خدمة - VIP)</option>
+                      <option value={2}>2 - أولوية مرتفعة جداً (شركات)</option>
+                      <option value={3}>3 - أولوية للألعاب والبث المباشر</option>
+                      <option value={4}>4 - أولوية فوق المتوسطة</option>
+                      <option value={5}>5 - أولوية متوسطة</option>
+                      <option value={6}>6 - أولوية للمشترك العادي</option>
+                      <option value={7}>7 - أولوية منخفضة لخطوط التوفير</option>
+                      <option value={8}>8 - أولوية دنيا (الوضع التلقائي)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-650 mb-1 font-sans">الـ Queue الأب (Parent Queue) - اختياري</label>
+                    <input
+                      type="text"
+                      placeholder="مثال: Total_Bandwidth"
+                      value={formData.qosParentQueue}
+                      onChange={(e) => setFormData(prev => ({ ...prev, qosParentQueue: e.target.value }))}
+                      className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2 pt-1">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="qosFastTrack"
+                      checked={formData.qosFastTrack}
+                      onChange={(e) => setFormData(prev => ({ ...prev, qosFastTrack: e.target.checked }))}
+                      className="w-3.5 h-3.5 text-blue-600 rounded bg-white border-slate-300 focus:ring-0 cursor-pointer"
+                    />
+                    <label htmlFor="qosFastTrack" className="text-[11px] font-semibold text-slate-700 select-none cursor-pointer font-sans">
+                      تفعيل تجاوز جدار الحماية (FastTrack Filter) لتخفيف معالجة وحدة الـ CPU
+                    </label>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="qosBurstEnabled"
+                      checked={formData.qosBurstEnabled}
+                      onChange={(e) => setFormData(prev => ({ ...prev, qosBurstEnabled: e.target.checked }))}
+                      className="w-3.5 h-3.5 text-blue-600 rounded bg-white border-slate-300 focus:ring-0 cursor-pointer"
+                    />
+                    <label htmlFor="qosBurstEnabled" className="text-[11px] font-bold text-blue-700 select-none cursor-pointer font-sans">
+                      تخصيص وضع الـ Burst (منح سرعة إنترنت مضاعفة مؤقتاً عند بداية التحميل)
+                    </label>
+                  </div>
+                </div>
+
+                {formData.qosBurstEnabled && (
+                  <div className="bg-white p-3 rounded-lg border border-blue-50 grid grid-cols-3 gap-2.5 animate-in slide-in-from-top-1 duration-150 text-right">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 mb-0.5 font-sans">حد البيرست (Burst Limit)</label>
+                      <input
+                        type="text"
+                        placeholder="45M/45M"
+                        value={formData.qosBurstLimit}
+                        onChange={(e) => setFormData(prev => ({ ...prev, qosBurstLimit: e.target.value }))}
+                        className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded text-[11px] font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 mb-0.5 font-sans">العتبة (Burst Threshold)</label>
+                      <input
+                        type="text"
+                        placeholder="25M/25M"
+                        value={formData.qosBurstThreshold}
+                        onChange={(e) => setFormData(prev => ({ ...prev, qosBurstThreshold: e.target.value }))}
+                        className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded text-[11px] font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 mb-0.5 font-sans">مدة البيرست (Burst Time)</label>
+                      <input
+                        type="text"
+                        placeholder="10s"
+                        value={formData.qosBurstTime}
+                        onChange={(e) => setFormData(prev => ({ ...prev, qosBurstTime: e.target.value }))}
+                        className="w-full px-2 py-1 bg-slate-50 border border-slate-200 rounded text-[11px] font-mono"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Custom Application-Specific QoS targeting block */}
+                <div className="border-t border-slate-200/60 pt-3 mt-3">
+                  <span className="block text-[11px] font-bold text-slate-705 mb-2 font-sans flex items-center gap-1.5">
+                    🎯 توجيه وتنظيم جودة الخدمة لتطبيقات مخصصة (QoS per Application)
+                  </span>
+                  
+                  {/* Selectable Apps Grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {[
+                      { id: 'youtube', label: 'يوتيوب (YouTube)', icon: '🎞️' },
+                      { id: 'tiktok', label: 'تيك توك (TikTok)', icon: '🎵' },
+                      { id: 'facebook', label: 'فيسبوك وإنستغرام', icon: '👥' },
+                      { id: 'whatsapp', label: 'واتساب وتليجرام', icon: '💬' },
+                      { id: 'gaming', label: 'ألعاب وببجي (Gaming)', icon: '🎮' },
+                      { id: 'netflix', label: 'نتفلكس وبث الفيديو', icon: '🍿' }
+                    ].map((app) => {
+                      const isChecked = formData.qosAppsList ? formData.qosAppsList.split(',').filter(Boolean).includes(app.id) : false;
+                      return (
+                        <div
+                          key={app.id}
+                          onClick={() => handleAppToggle(app.id)}
+                          className={`flex items-center gap-1.5 p-2 rounded-lg border text-[10px] select-none cursor-pointer transition-all ${
+                            isChecked
+                              ? 'bg-blue-50 border-blue-200 text-blue-900 font-bold shadow-xs'
+                              : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            readOnly
+                            className="w-3 h-3 text-blue-600 border-slate-350 rounded focus:ring-0 pointer-events-none"
+                          />
+                          <span>{app.icon}</span>
+                          <span className="truncate leading-none font-sans">{app.label}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* QoS Rule settings for chosen apps (Only shown if at least one is selected) */}
+                  {formData.qosAppsList && formData.qosAppsList.split(',').filter(Boolean).length > 0 && (
+                    <div className="mt-2.5 bg-white p-2.5 rounded-lg border border-slate-200 grid grid-cols-1 sm:grid-cols-2 gap-3 text-right animate-in fade-in slide-in-from-top-1 duration-150">
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-600 mb-1 font-sans">إجراء المزامنة والتنظيم (QoS Action)</label>
+                        <select
+                          value={formData.qosAppsRuleType}
+                          onChange={(e) => setFormData(prev => ({ ...prev, qosAppsRuleType: e.target.value as 'prioritize' | 'limit' }))}
+                          className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded text-[11px] font-sans font-bold text-slate-850 outline-none"
+                        >
+                          <option value="prioritize">🚀 تسريع ومنح الأولوية والسرعة القصوى</option>
+                          <option value="limit">⏳ تحجيم وتحديد سرعة الباقة للتطبيق</option>
+                        </select>
+                      </div>
+
+                      {formData.qosAppsRuleType === 'limit' && (
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-600 mb-1 font-sans">السرعة المحددة للتطبيق بـ (App Speed Limit)</label>
+                          <select
+                            value={formData.qosAppsLimitValue}
+                            onChange={(e) => setFormData(prev => ({ ...prev, qosAppsLimitValue: e.target.value }))}
+                            className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded text-[11px] font-mono font-bold text-slate-700 outline-none"
+                          >
+                            <option value="1M/1M">1 Mbps Up / 1 Mbps Down</option>
+                            <option value="2M/2M">2 Mbps Up / 2 Mbps Down (موصى بقوة به)</option>
+                            <option value="4M/4M">4 Mbps Up / 4 Mbps Down</option>
+                            <option value="6M/6M">6 Mbps Up / 6 Mbps Down</option>
+                            <option value="8M/8M">8 Mbps Up / 8 Mbps Down</option>
+                            <option value="512k/512k">512 kbps Up / 512 kbps Down (محدود جداً)</option>
+                          </select>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
               {/* Simulated Queue disclaimer */}
               <div className="p-3 bg-amber-50 rounded-lg border border-amber-100 flex items-start gap-2 text-[11px] text-amber-800 leading-relaxed font-sans mt-2">
                 <AlertCircle className="w-5 h-5 text-amber-500 shrink-0" />
                 <div>
-                  تنبيه: عند إنشاء الباقة، سيقوم نظام SuperSAS بتصدير أوامر إنشاء الـ Profile والـ Address List لمزامنتها آلياً عبر API أو كود الطرفية في صفحة المايكروتك بنقرة واحدة.
+                  تنبيه: عند إنشاء أو تعديل الباقة، سيقوم نظام مشتركين چنچون بتحديث الـ Profiles ومزامنة محددات الـ QoS والـ MicroTik Queues آلياً لنقل جودة بث متناهية الدقة.
                 </div>
               </div>
 

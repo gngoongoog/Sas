@@ -19,6 +19,16 @@ export interface PPPoEProfile {
   addressList: string;
   price: number; // in IQD or USD e.g. 15000
   validityDays: number;
+  qosPriority?: number;
+  qosParentQueue?: string;
+  qosBurstEnabled?: boolean | number;
+  qosBurstLimit?: string;
+  qosBurstThreshold?: string;
+  qosBurstTime?: string;
+  qosFastTrack?: boolean | number;
+  qosAppsList?: string; // Comma-separated list of application keys e.g. "youtube,tiktok,whatsapp"
+  qosAppsRuleType?: 'prioritize' | 'limit'; // 'prioritize' to fast-track/increase priority or 'limit' to throttle
+  qosAppsLimitValue?: string; // limit speed like "2M/2M" for throttled apps
 }
 
 export interface Subscriber {

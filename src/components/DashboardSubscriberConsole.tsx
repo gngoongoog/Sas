@@ -230,7 +230,14 @@ export function DashboardSubscriberConsole() {
 
     setSubmitting(true);
     try {
-      const customDays = Math.ceil(renewCustomHours / 24);
+      const durationStr = renewCustomHours === 1 
+        ? 'ساعة واحدة للفحص والصيانة' 
+        : renewCustomHours === 24 
+        ? 'يوم واحد تجريبي'
+        : renewCustomHours % 24 === 0 
+        ? `${renewCustomHours / 24} يوم`
+        : `${renewCustomHours} ساعة`;
+
       const res = await renewSubscriber(
         renewingSub.id,
         renewingSub.profileId,
@@ -240,7 +247,7 @@ export function DashboardSubscriberConsole() {
       );
 
       if (res.success) {
-        showFeedback('success', `تم بنجاح تجديد واشتراك المشترك "${renewingSub.fullName}" لمدة ${customDays} يوم وإرسال إشعار تفعيل.`);
+        showFeedback('success', `تم بنجاح تجديد واشتراك المشترك "${renewingSub.fullName}" لـ ${durationStr} وإرسال إشعار تفعيل.`);
         setRenewingSub(null);
         setRenewCardPin('');
       } else {
@@ -609,6 +616,7 @@ export function DashboardSubscriberConsole() {
                     <option value={360}>نصف شهر (15 يوم / 360 ساعة)</option>
                     <option value={168}>أسبوع واحد (7 أيام / 168 ساعة)</option>
                     <option value={24}>يوم واحد تجريبي (24 ساعة)</option>
+                    <option value={1}>ساعة واحدة للفحص والصيانة (1 ساعة)</option>
                   </select>
                 </div>
               )}

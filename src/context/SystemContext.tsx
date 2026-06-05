@@ -350,9 +350,83 @@ export const SystemProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
     if (!res.ok) handleApiError(res, 'فشل إضافة باقة.');
     await fetchAllData();
-    appendToTerminal(
-      `/ppp profile add name="${profile.name}" local-address=${profile.localAddress} remote-address=${profile.remoteAddressPool} rate-limit="${profile.rateLimit}" address-list="${profile.addressList}" comment="SuperSAS Profile: ${profile.price} IQD"`
-    );
+
+    // Generate detailed RouterOS QoS command
+    let finalRateLimit = profile.rateLimit;
+    const pPriority = profile.qosPriority || 8;
+    if (profile.qosBurstEnabled && profile.qosBurstLimit && profile.qosBurstThreshold && profile.qosBurstTime) {
+      finalRateLimit = `${profile.rateLimit} ${profile.qosBurstLimit} ${profile.qosBurstThreshold} ${profile.qosBurstTime} ${pPriority}`;
+    } else if (pPriority !== 8) {
+      finalRateLimit = `${profile.rateLimit} 0/0 0/0 0/0 ${pPriority}`;
+    }
+
+    let appendScript = `# إضافة باقة جديدة مع جودة الخدمة QoS: ${profile.name}\n`;
+    appendScript += `/ppp profile add name="${profile.name}" local-address=${profile.localAddress} remote-address=${profile.remoteAddressPool} rate-limit="${finalRateLimit}" address-list="${profile.addressList}" comment="Chanchon Profile: ${profile.price} IQD"`;
+    if (profile.qosParentQueue) {
+      appendScript += ` parent-queue="${profile.qosParentQueue}"`;
+    }
+
+    if (profile.qosFastTrack) {
+      appendScript += `\n/ip firewall filter add chain=forward action=fasttrack-connection src-address-list="${profile.addressList}" comment="QoS: FastTrack for ${profile.name}"`;
+    } else {
+      appendScript += `\n/ip firewall mangle add chain=forward action=change-dscp new-dscp=46 src-address-list="${profile.addressList}" comment="QoS: Voice/Gaming DSCP 46 for ${profile.name}"`;
+    }
+
+    // App QoS scripting
+    if (profile.qosAppsList) {
+      const apps = profile.qosAppsList.split(',').filter(Boolean);
+      const ruleType = profile.qosAppsRuleType || 'prioritize';
+      const limitVal = profile.qosAppsLimitValue || '2M/2M';
+      const addressList = profile.addressList || 'ACTIVE_USERS';
+
+      appendScript += `\n\n# --- [إعدادات QoS لتطبيقات الباقة: ${profile.name}] ---`;
+      apps.forEach((app: string) => {
+        let nameAr = '';
+        let domains: string[] = [];
+        let ports = '';
+
+        if (app === 'youtube') {
+          nameAr = 'يوتيوب (YouTube)';
+          domains = ['youtube.com', 'googlevideo.com', 'ytimg.com'];
+        } else if (app === 'tiktok') {
+          nameAr = 'تيك توك (TikTok)';
+          domains = ['tiktok.com', 'byteoversea.com', 'tiktokv.com', 'tiktokcdn.com'];
+        } else if (app === 'whatsapp') {
+          nameAr = 'واتساب وتليجرام (WhatsApp & Telegram)';
+          domains = ['whatsapp.com', 'whatsapp.net', 'telegram.org', 'telegram.dog'];
+          ports = '443,80,5222,5223';
+        } else if (app === 'facebook') {
+          nameAr = 'فيسبوك وإنستغرام (Facebook & Instagram)';
+          domains = ['facebook.com', 'fbcdn.net', 'instagram.com', 'cdninstagram.com'];
+        } else if (app === 'gaming') {
+          nameAr = 'ألعاب أونلاين وببجي (Gaming & PUBG)';
+          ports = '5007,12235,17000,20000';
+        } else if (app === 'netflix') {
+          nameAr = 'نتفلكس وبث الفيديو (Netflix & Video)';
+          domains = ['netflix.com', 'nflxvideo.net'];
+        }
+
+        appendScript += `\n# 📱 حركة بيانات ${nameAr}`;
+        if (domains.length > 0) {
+          domains.forEach((d) => {
+            appendScript += `\n/ip firewall address-list add list="list_${app}" address="${d}" comment="QoS ${app}"`;
+          });
+          appendScript += `\n/ip firewall mangle add chain=forward action=mark-connection new-connection-mark="${app}_conn" dst-address-list="list_${app}" src-address-list="${addressList}" passthrough=yes comment="QoS ${app} Conn"`;
+          appendScript += `\n/ip firewall mangle add chain=forward action=mark-packet new-packet-mark="${app}_pkt" connection-mark="${app}_conn" passthrough=no comment="QoS ${app} Packet"`;
+        } else if (ports) {
+          appendScript += `\n/ip firewall mangle add chain=forward action=mark-connection new-connection-mark="${app}_conn" protocol=tcp dst-port="${ports}" src-address-list="${addressList}" passthrough=yes comment="QoS ${app} Conn"`;
+          appendScript += `\n/ip firewall mangle add chain=forward action=mark-packet new-packet-mark="${app}_pkt" connection-mark="${app}_conn" passthrough=no comment="QoS ${app} Packet"`;
+        }
+
+        if (ruleType === 'prioritize') {
+          appendScript += `\n/queue simple add name="${profile.name}_${app}_QoS" target="${addressList}" packet-marks="${app}_pkt" priority=2/2 max-limit=0/0 comment="Prioritized ${app} for ${profile.name}"`;
+        } else {
+          appendScript += `\n/queue simple add name="${profile.name}_${app}_Throttle" target="${addressList}" packet-marks="${app}_pkt" priority=7/7 max-limit="${limitVal}" comment="Limited ${app} to ${limitVal} for ${profile.name}"`;
+        }
+      });
+    }
+
+    appendToTerminal(appendScript);
   };
 
   const updateProfile = async (profile: PPPoEProfile) => {
@@ -364,6 +438,49 @@ export const SystemProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
     if (!res.ok) handleApiError(res, 'فشل تحديث الباقة.');
     await fetchAllData();
+
+    // Generate detailed RouterOS QoS command for updates
+    let finalRateLimit = profile.rateLimit;
+    const pPriority = profile.qosPriority || 8;
+    if (profile.qosBurstEnabled && profile.qosBurstLimit && profile.qosBurstThreshold && profile.qosBurstTime) {
+      finalRateLimit = `${profile.rateLimit} ${profile.qosBurstLimit} ${profile.qosBurstThreshold} ${profile.qosBurstTime} ${pPriority}`;
+    } else if (pPriority !== 8) {
+      finalRateLimit = `${profile.rateLimit} 0/0 0/0 0/0 ${pPriority}`;
+    }
+
+    let appendScript = `# تحديث باقة اشتراك وإعدادات جودة الخدمة QoS: ${profile.name}\n`;
+    appendScript += `/ppp profile set [find name="${profile.name}"] local-address=${profile.localAddress} remote-address=${profile.remoteAddressPool} rate-limit="${finalRateLimit}" address-list="${profile.addressList}"`;
+    if (profile.qosParentQueue) {
+      appendScript += ` parent-queue="${profile.qosParentQueue}"`;
+    }
+
+    // App QoS scripting for updates
+    if (profile.qosAppsList) {
+      const apps = profile.qosAppsList.split(',').filter(Boolean);
+      const ruleType = profile.qosAppsRuleType || 'prioritize';
+      const limitVal = profile.qosAppsLimitValue || '2M/2M';
+      const addressList = profile.addressList || 'ACTIVE_USERS';
+
+      appendScript += `\n\n# --- [تحديث QoS لتطبيقات الباقة: ${profile.name}] ---`;
+      apps.forEach((app: string) => {
+        let nameAr = '';
+        if (app === 'youtube') nameAr = 'يوتيوب (YouTube)';
+        else if (app === 'tiktok') nameAr = 'تيك توك (TikTok)';
+        else if (app === 'whatsapp') nameAr = 'واتساب وتليجرام (WhatsApp & Telegram)';
+        else if (app === 'facebook') nameAr = 'فيسبوك وإنستغرام (Facebook & Instagram)';
+        else if (app === 'gaming') nameAr = 'ألعاب أونلاين وببجي (Gaming & PUBG)';
+        else if (app === 'netflix') nameAr = 'نتفلكس وبث الفيديو (Netflix & Video)';
+
+        appendScript += `\n# 📱 تحديث تنظيم حركة بيانات لـ: ${nameAr}`;
+        if (ruleType === 'prioritize') {
+          appendScript += `\n/queue simple set [find name="${profile.name}_${app}_QoS" or name="${profile.name}_${app}_Throttle"] priority=2/2 max-limit=0/0 comment="Prioritized ${app} for ${profile.name}"`;
+        } else {
+          appendScript += `\n/queue simple set [find name="${profile.name}_${app}_QoS" or name="${profile.name}_${app}_Throttle"] priority=7/7 max-limit="${limitVal}" comment="Limited ${app} to ${limitVal} for ${profile.name}"`;
+        }
+      });
+    }
+
+    appendToTerminal(appendScript);
   };
 
   const deleteProfile = async (id: string) => {

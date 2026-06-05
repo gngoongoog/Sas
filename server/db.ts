@@ -107,9 +107,31 @@ export function initDb() {
       addressList TEXT DEFAULT 'ACTIVE_USERS',
       price REAL DEFAULT 0,
       validityDays INTEGER DEFAULT 30,
-      createdAt TEXT DEFAULT (datetime('now'))
+      createdAt TEXT DEFAULT (datetime('now')),
+      qosPriority INTEGER DEFAULT 8,
+      qosParentQueue TEXT DEFAULT '',
+      qosBurstEnabled INTEGER DEFAULT 0,
+      qosBurstLimit TEXT DEFAULT '',
+      qosBurstThreshold TEXT DEFAULT '',
+      qosBurstTime TEXT DEFAULT '',
+      qosFastTrack INTEGER DEFAULT 0,
+      qosAppsList TEXT DEFAULT '',
+      qosAppsRuleType TEXT DEFAULT 'prioritize',
+      qosAppsLimitValue TEXT DEFAULT '2M/2M'
     )
   `);
+
+  // Migrations for existing databases to support QoS columns
+  try { db.exec("ALTER TABLE profiles ADD COLUMN qosPriority INTEGER DEFAULT 8"); } catch (e) {}
+  try { db.exec("ALTER TABLE profiles ADD COLUMN qosParentQueue TEXT DEFAULT ''"); } catch (e) {}
+  try { db.exec("ALTER TABLE profiles ADD COLUMN qosBurstEnabled INTEGER DEFAULT 0"); } catch (e) {}
+  try { db.exec("ALTER TABLE profiles ADD COLUMN qosBurstLimit TEXT DEFAULT ''"); } catch (e) {}
+  try { db.exec("ALTER TABLE profiles ADD COLUMN qosBurstThreshold TEXT DEFAULT ''"); } catch (e) {}
+  try { db.exec("ALTER TABLE profiles ADD COLUMN qosBurstTime TEXT DEFAULT ''"); } catch (e) {}
+  try { db.exec("ALTER TABLE profiles ADD COLUMN qosFastTrack INTEGER DEFAULT 0"); } catch (e) {}
+  try { db.exec("ALTER TABLE profiles ADD COLUMN qosAppsList TEXT DEFAULT ''"); } catch (e) {}
+  try { db.exec("ALTER TABLE profiles ADD COLUMN qosAppsRuleType TEXT DEFAULT 'prioritize'"); } catch (e) {}
+  try { db.exec("ALTER TABLE profiles ADD COLUMN qosAppsLimitValue TEXT DEFAULT '2M/2M'"); } catch (e) {}
 
   // Create Subscribers table
   db.exec(`

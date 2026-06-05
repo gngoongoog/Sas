@@ -294,15 +294,23 @@ async function startServer() {
 
   const handlePostProfile = (req: any, res: any) => {
     try {
-      const { id, name, localAddress, remoteAddressPool, rateLimit, addressList, price, validityDays } = req.body;
+      const { 
+        id, name, localAddress, remoteAddressPool, rateLimit, addressList, price, validityDays,
+        qosPriority, qosParentQueue, qosBurstEnabled, qosBurstLimit, qosBurstThreshold, qosBurstTime, qosFastTrack,
+        qosAppsList, qosAppsRuleType, qosAppsLimitValue
+      } = req.body;
       if (!name || !rateLimit || price === undefined) {
         return res.status(400).json({ error: 'الاسم، سرعة الباقة، والسعر حقول مطلوبة.' });
       }
 
       const finalId = id || `p-${Date.now()}`;
       db.prepare(`
-        INSERT INTO profiles (id, name, localAddress, remoteAddressPool, rateLimit, addressList, price, validityDays)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO profiles (
+          id, name, localAddress, remoteAddressPool, rateLimit, addressList, price, validityDays,
+          qosPriority, qosParentQueue, qosBurstEnabled, qosBurstLimit, qosBurstThreshold, qosBurstTime, qosFastTrack,
+          qosAppsList, qosAppsRuleType, qosAppsLimitValue
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         finalId,
         name,
@@ -311,10 +319,20 @@ async function startServer() {
         rateLimit,
         addressList || 'ACTIVE_USERS',
         Number(price) || 0,
-        Number(validityDays) || 30
+        Number(validityDays) || 30,
+        qosPriority !== undefined ? Number(qosPriority) : 8,
+        qosParentQueue || '',
+        qosBurstEnabled ? 1 : 0,
+        qosBurstLimit || '',
+        qosBurstThreshold || '',
+        qosBurstTime || '',
+        qosFastTrack ? 1 : 0,
+        qosAppsList || '',
+        qosAppsRuleType || 'prioritize',
+        qosAppsLimitValue || '2M/2M'
       );
 
-      logToSql('billing', 'success', `تم إنشاء باقة اشتراك جديدة: ${name}`, `سعر: ${price} د.ع - سرعة: ${rateLimit}`);
+      logToSql('billing', 'success', `تم إنشاء باقة اشتراك جديدة مع إعدادات QoS: ${name}`, `سعر: ${price} د.ع - سرعة: ${rateLimit}`);
       res.status(201).json({ success: true, id: finalId });
     } catch (error: any) {
       res.status(500).json({ error: 'فشل إضافة الباقة.', details: error.message });
@@ -327,11 +345,17 @@ async function startServer() {
   const handlePutProfile = (req: any, res: any) => {
     try {
       const { id } = req.params;
-      const { name, localAddress, remoteAddressPool, rateLimit, addressList, price, validityDays } = req.body;
+      const { 
+        name, localAddress, remoteAddressPool, rateLimit, addressList, price, validityDays,
+        qosPriority, qosParentQueue, qosBurstEnabled, qosBurstLimit, qosBurstThreshold, qosBurstTime, qosFastTrack,
+        qosAppsList, qosAppsRuleType, qosAppsLimitValue
+      } = req.body;
 
       db.prepare(`
         UPDATE profiles
-        SET name = ?, localAddress = ?, remoteAddressPool = ?, rateLimit = ?, addressList = ?, price = ?, validityDays = ?
+        SET name = ?, localAddress = ?, remoteAddressPool = ?, rateLimit = ?, addressList = ?, price = ?, validityDays = ?,
+            qosPriority = ?, qosParentQueue = ?, qosBurstEnabled = ?, qosBurstLimit = ?, qosBurstThreshold = ?, qosBurstTime = ?, qosFastTrack = ?,
+            qosAppsList = ?, qosAppsRuleType = ?, qosAppsLimitValue = ?
         WHERE id = ?
       `).run(
         name,
@@ -341,10 +365,20 @@ async function startServer() {
         addressList || 'ACTIVE_USERS',
         Number(price) || 0,
         Number(validityDays) || 30,
+        qosPriority !== undefined ? Number(qosPriority) : 8,
+        qosParentQueue || '',
+        qosBurstEnabled ? 1 : 0,
+        qosBurstLimit || '',
+        qosBurstThreshold || '',
+        qosBurstTime || '',
+        qosFastTrack ? 1 : 0,
+        qosAppsList || '',
+        qosAppsRuleType || 'prioritize',
+        qosAppsLimitValue || '2M/2M',
         id
       );
 
-      logToSql('billing', 'info', `تم تحديث الباقة: ${name}`, `تفاصيل السرعة: ${rateLimit}`);
+      logToSql('billing', 'info', `تم تحديث الباقة وإعدادات جودة الخدمة QoS: ${name}`, `تفاصيل السرعة: ${rateLimit}`);
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ error: 'فشل التحديث.', details: error.message });
