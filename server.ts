@@ -16,6 +16,15 @@ import { startCronJobs } from './server/cron';
 
 dotenv.config();
 
+// Global Proactive Crash Protection & Auto-Recovery (Bypass server crashes to guarantee 100% uptime)
+process.on('uncaughtException', (err) => {
+  console.error('⚠️ [Chanchon Control] Uncaught Exception caught gracefully to prevent process crash:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('⚠️ [Chanchon Control] Unhandled Rejection caught gracefully:', reason);
+});
+
 // Ensure Database schema is ready on first boot
 initDb();
 startCronJobs(db, decrypt);

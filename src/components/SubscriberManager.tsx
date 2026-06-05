@@ -14,6 +14,7 @@ import {
   Edit, 
   Trash2,
   Lock,
+  Unlock,
   Calendar,
   Layers,
   CheckCircle,
@@ -673,6 +674,12 @@ export const SubscriberManager: React.FC = () => {
   // Selected entities for edit/renew
   const [selectedSub, setSelectedSub] = useState<Subscriber | null>(null);
 
+  // MAC dynamic custom modal states
+  const [macModalSub, setMacModalSub] = useState<Subscriber | null>(null);
+  const [macActionType, setMacActionType] = useState<'lock' | 'unlock' | 'error' | null>(null);
+  const [macInputValue, setMacInputValue] = useState('');
+  const [macErrorMessage, setMacErrorMessage] = useState('');
+
   // Form states
   const [formData, setFormData] = useState({
     username: '',
@@ -843,6 +850,52 @@ export const SubscriberManager: React.FC = () => {
       }, 1500);
     } else {
       setRenewError(res.message);
+    }
+  };
+
+  const handleMacModalSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!macModalSub) return;
+
+    if (macActionType === 'unlock') {
+      try {
+        await updateSubscriber({ ...macModalSub, macAddress: '' });
+        setMacActionType(null);
+        setMacModalSub(null);
+      } catch (err: any) {
+        setMacErrorMessage(err.message || 'حدث خطأ أثناء فك قفل الماك.');
+      }
+    } else if (macActionType === 'lock') {
+      const cleanedMac = macInputValue.replace(/[^a-fA-F0-9]/g, '');
+      let formattedMac = macInputValue.trim();
+      
+      if (cleanedMac.length === 12) {
+        const matched = cleanedMac.match(/.{1,2}/g);
+        if (matched) {
+          formattedMac = matched.join(':').toUpperCase();
+        }
+      } else {
+        formattedMac = formattedMac.toUpperCase();
+      }
+
+      if (!formattedMac) {
+        setMacErrorMessage('الرجاء إدخال عنوان MAC صحيح.');
+        return;
+      }
+
+      const macRegex = /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/;
+      if (!macRegex.test(formattedMac)) {
+        setMacErrorMessage('تنسيق عنوان الماك غير صالح (مثال AA:BB:CC:DD:EE:FF).');
+        return;
+      }
+
+      try {
+        await updateSubscriber({ ...macModalSub, macAddress: formattedMac });
+        setMacActionType(null);
+        setMacModalSub(null);
+      } catch (err: any) {
+        setMacErrorMessage(err.message || 'حدث خطأ أثناء قفل الماك.');
+      }
     }
   };
 
@@ -1698,13 +1751,78 @@ export const SubscriberManager: React.FC = () => {
 
                       {/* IP / MAC Lock */}
                       <td className="px-6 py-4 font-mono">
-                        <div className="text-slate-700">{sub.ipAddress || 'توزيع تلقائي (Pool)'}</div>
+                        <div className="text-slate-700 font-sans font-medium">{sub.ipAddress || 'توزيع تلقائي (Pool)'}</div>
                         {sub.macAddress ? (
-                          <div className="text-[10px] text-emerald-600 flex items-center gap-0.5 leading-none mt-0.5 font-sans">
-                            <Lock className="w-2.5 h-2.5" /> مقفل MAC: {sub.macAddress}
+                          <div className="mt-1.5 space-y-1 text-right">
+                            <div className="text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-100/60 rounded px-1.5 py-0.5 inline-flex items-center gap-1 font-sans font-bold leading-normal">
+                              <Lock className="w-2.5 h-2.5 text-emerald-650 shrink-0" />
+                              <span>مقفل MAC: {sub.macAddress}</span>
+                            </div>
+                            <div className="block">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setMacModalSub(sub);
+                                  setMacActionType('unlock');
+                                  setMacInputValue('');
+                                  setMacErrorMessage('');
+                                }}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 bg-rose-550 text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 hover:border-rose-300 rounded text-[9.5px] font-bold font-sans cursor-pointer transition-all shrink-0 mt-0.5 leading-normal"
+                                title="اضغط لفك قفل الماك للسماح لجهاز جديد بالصعود أونلاين"
+                              >
+                                <Unlock className="w-2.5 h-2.5 text-rose-500 shrink-0" />
+                                <span>فك قفل الماك (السماح بجهاز جديد)</span>
+                              </button>
+                            </div>
                           </div>
                         ) : (
-                          <div className="text-[10px] text-slate-400">سماح بأي كابينة</div>
+                          <div className="mt-1.5 space-y-1 text-right">
+                            <div className="text-[10px] text-slate-500 bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5 inline-flex items-center gap-1 font-sans leading-normal">
+                              <span>سماح بأي كابينة / جهاز (مفتوح)</span>
+                            </div>
+                            <div className="block">
+                              {sessions.some(sess => sess.username === sub.username) ? (
+                                <button
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    const sess = sessions.find(s => s.username === sub.username);
+                                    const currentMac = sess ? (sess.mac || sess.callerId) : '';
+                                    if (currentMac) {
+                                      try {
+                                        await updateSubscriber({ ...sub, macAddress: currentMac });
+                                      } catch (err) {
+                                        console.error('Failed to lock MAC:', err);
+                                      }
+                                    } else {
+                                      setMacModalSub(sub);
+                                      setMacActionType('error');
+                                      setMacErrorMessage('تعذر العثور على عنوان الـ MAC الخاص بالجلسة النشطة حالياً. يرجى إدخاله يدوياً.');
+                                    }
+                                  }}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white border border-emerald-700 rounded text-[9.5px] font-bold font-sans cursor-pointer transition-all shrink-0 mt-0.5 leading-normal shadow-xs animate-pulse"
+                                  title="المشترك متصل أونلاين حالياً. اضغط لقفل حسابه فوراً على الماك الذي سجل به الآن"
+                                >
+                                  <Lock className="w-2.5 h-2.5 text-white shrink-0" />
+                                  <span>قفل الماك على جهازه الحالي المتصل أونلاين ✅</span>
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setMacModalSub(sub);
+                                    setMacActionType('lock');
+                                    setMacInputValue('');
+                                    setMacErrorMessage('');
+                                  }}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 hover:bg-blue-100 text-blue-750 border border-blue-200 hover:border-blue-300 rounded text-[9.5px] font-bold font-sans cursor-pointer transition-all shrink-0 mt-0.5 leading-normal"
+                                  title="اضغط لكتابة عنوان MAC يدوياً لقفل هذا العميل"
+                                >
+                                  <Lock className="w-2.5 h-2.5 text-blue-500 shrink-0" />
+                                  <span>قفل MAC يدوي</span>
+                                </button>
+                              )}
+                            </div>
+                          </div>
                         )}
                       </td>
 
@@ -2261,6 +2379,115 @@ export const SubscriberManager: React.FC = () => {
                 </button>
               </div>
 
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 🔐 CUSTOM MAC LOCK / UNLOCK INTERACTIVE MODAL */}
+      {macActionType !== null && macModalSub && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full p-6 text-right animate-in zoom-in-95 duration-200" dir="rtl">
+            <h3 className="text-base font-black text-slate-900 mb-3 flex items-center gap-2 border-b border-slate-100 pb-3">
+              {macActionType === 'unlock' && (
+                <>
+                  <Unlock className="w-5 h-5 text-rose-500" />
+                  <span>تأكيد فك قفل الماك آدرس</span>
+                </>
+              )}
+              {macActionType === 'lock' && (
+                <>
+                  <Lock className="w-5 h-5 text-blue-600" />
+                  <span>قفل المشترك على ماك آدرس جديد</span>
+                </>
+              )}
+              {macActionType === 'error' && (
+                <>
+                  <AlertTriangle className="w-5 h-5 text-amber-500" />
+                  <span>تنبيه خطأ التقاط الماك</span>
+                </>
+              )}
+            </h3>
+
+            <form onSubmit={handleMacModalSubmit} className="space-y-4">
+              {macActionType === 'unlock' && (
+                <div className="space-y-3">
+                  <p className="text-sm text-slate-650 leading-relaxed font-sans">
+                    هل أنت متأكد من فك قفل الماك (MAC Address) للعميل <strong className="text-slate-900 font-bold">{macModalSub.fullName || macModalSub.username}</strong>؟
+                  </p>
+                  <div className="p-3 bg-amber-50 border border-amber-100 rounded-lg text-xs text-amber-800 font-sans leading-relaxed">
+                    من خلال فك القفل، سيتمكن العميل من صعود الاتصال (Online) من أي جهاز جديد (سواء راوتر، ONU، أو هاتف) على الفور، وعندها سيقوم النظام بقفل حسابه على الماك الجديد إن اخترت ذلك لاحقاً.
+                  </div>
+                </div>
+              )}
+
+              {macActionType === 'lock' && (
+                <div className="space-y-3">
+                  <p className="text-sm text-slate-650 leading-relaxed font-sans">
+                    أدخل عنوان الماك الجديد يدوياً لقفل اشتراك <strong className="text-slate-900 font-bold">{macModalSub.fullName || macModalSub.username}</strong> على جهازه الجديد:
+                  </p>
+                  
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">عنوان الماك (MAC / Caller ID) <span className="text-rose-500">*</span></label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="AA:BB:CC:DD:EE:FF"
+                      value={macInputValue}
+                      onChange={(e) => setMacInputValue(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm font-mono tracking-widest text-center focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                    />
+                  </div>
+
+                  <div className="p-3 bg-blue-50/50 border border-blue-100 rounded-lg text-[11px] text-blue-800 font-sans leading-relaxed">
+                    يساعد قفل الماك (Caller ID) في منع أي شخص آخر من سرقة يوزر الاشتراك وتشغيله على أجهزة مجهولة أو كبائن أخرى.
+                  </div>
+                </div>
+              )}
+
+              {macActionType === 'error' && (
+                <div className="p-3.5 bg-rose-50 border border-rose-100 text-rose-800 text-xs rounded-lg font-sans leading-relaxed">
+                  {macErrorMessage}
+                </div>
+              )}
+
+              {macErrorMessage && macActionType !== 'error' && (
+                <div className="p-3 bg-rose-50 border border-rose-100 text-rose-700 text-xs rounded-lg font-sans font-bold">
+                  ⚠️ {macErrorMessage}
+                </div>
+              )}
+
+              <div className="border-t border-slate-100 pt-4 mt-6 flex justify-end gap-2 text-sm shrink-0">
+                {macActionType === 'error' ? (
+                  <button
+                    type="button"
+                    onClick={() => { setMacActionType(null); setMacModalSub(null); }}
+                    className="px-4 py-2 bg-slate-900 text-white rounded-lg cursor-pointer hover:bg-slate-800 transition-colors font-bold"
+                  >
+                    موافق، إغلاق الـتنبيه
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => { setMacActionType(null); setMacModalSub(null); }}
+                      className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg cursor-pointer hover:bg-slate-200 transition-colors"
+                    >
+                      إلغاء الإجراء
+                    </button>
+                    <button
+                      type="submit"
+                      className={`px-5 py-2 text-white rounded-lg cursor-pointer font-bold transition-all shadow-xs ${
+                        macActionType === 'unlock' 
+                          ? 'bg-rose-600 hover:bg-rose-700' 
+                          : 'bg-blue-600 hover:bg-blue-700'
+                      }`}
+                    >
+                      {macActionType === 'unlock' ? 'تأكيد فك قفل الماك آدرس' : 'قفل الحساب بالماك آدرس'}
+                    </button>
+                  </>
+                )}
+              </div>
             </form>
           </div>
         </div>
