@@ -1671,11 +1671,11 @@ export const SubscriberManager: React.FC = () => {
             <p className="text-xs text-slate-400 mt-1">امسح الكلمات الدلالية أو ابدأ بتسجيل مشترك جديد بالشبكة.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-right text-sm">
-              <thead className="bg-slate-50 text-slate-500 font-sans text-xs border-b border-slate-100">
+          <div className="overflow-auto max-h-[650px] relative" style={{ scrollbarGutter: 'stable' }}>
+            <table className="w-full text-right text-sm min-w-[1300px] border-collapse">
+              <thead className="bg-slate-50 text-slate-500 font-sans text-xs border-b border-slate-200 sticky top-0 z-20 shadow-[0_1px_0_0_rgba(226,232,240,1)]">
                 <tr>
-                  <th className="px-4 py-4 text-center w-10">
+                  <th className="px-4 py-4 text-center w-10 bg-slate-50 sticky top-0 z-20">
                     <input 
                       type="checkbox"
                       className="rounded border-slate-300 cursor-pointer"
@@ -1689,14 +1689,14 @@ export const SubscriberManager: React.FC = () => {
                       }}
                     />
                   </th>
-                  <th className="px-6 py-4">اسم العميل ومكتف الخدمة</th>
-                  <th className="px-6 py-4">يوزر PPPoE والرمز</th>
-                  <th className="px-6 py-4">السرعة والباقة المحددة</th>
-                  <th className="px-6 py-4">السيرفر الرابط</th>
-                  <th className="px-6 py-4">عنوان IP / MAC Lock</th>
-                  <th className="px-6 py-4">انتهاء الصلاحية</th>
-                  <th className="px-6 py-4">الحالة</th>
-                  <th className="px-6 py-4 text-center">إجراءات المايكروتك</th>
+                  <th className="px-6 py-4 bg-slate-50 sticky top-0 z-20">اسم العميل ومكتف الخدمة</th>
+                  <th className="px-6 py-4 bg-slate-50 sticky top-0 z-20">يوزر PPPoE والرمز</th>
+                  <th className="px-6 py-4 bg-slate-50 sticky top-0 z-20">السرعة والباقة المحددة</th>
+                  <th className="px-6 py-4 bg-slate-50 sticky top-0 z-20">السيرفر الرابط</th>
+                  <th className="px-6 py-4 bg-slate-50 sticky top-0 z-20">عنوان IP / MAC Lock</th>
+                  <th className="px-6 py-4 bg-slate-50 sticky top-0 z-20">انتهاء الصلاحية</th>
+                  <th className="px-6 py-4 bg-slate-50 sticky top-0 z-20">الحالة</th>
+                  <th className="px-6 py-4 text-center bg-slate-50 sticky top-0 z-20">إجراءات المايكروتك</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-700 text-xs">
@@ -1783,21 +1783,14 @@ export const SubscriberManager: React.FC = () => {
                             <div className="block">
                               {sessions.some(sess => sess.username === sub.username) ? (
                                 <button
-                                  onClick={async (e) => {
+                                  onClick={(e) => {
                                     e.stopPropagation();
                                     const sess = sessions.find(s => s.username === sub.username);
-                                    const currentMac = sess ? (sess.mac || sess.callerId) : '';
-                                    if (currentMac) {
-                                      try {
-                                        await updateSubscriber({ ...sub, macAddress: currentMac });
-                                      } catch (err) {
-                                        console.error('Failed to lock MAC:', err);
-                                      }
-                                    } else {
-                                      setMacModalSub(sub);
-                                      setMacActionType('error');
-                                      setMacErrorMessage('تعذر العثور على عنوان الـ MAC الخاص بالجلسة النشطة حالياً. يرجى إدخاله يدوياً.');
-                                    }
+                                    const currentMac = sess ? (sess.mac || sess.callerId || '') : '';
+                                    setMacModalSub(sub);
+                                    setMacActionType('lock');
+                                    setMacInputValue(currentMac);
+                                    setMacErrorMessage('');
                                   }}
                                   className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white border border-emerald-700 rounded text-[9.5px] font-bold font-sans cursor-pointer transition-all shrink-0 mt-0.5 leading-normal shadow-xs animate-pulse"
                                   title="المشترك متصل أونلاين حالياً. اضغط لقفل حسابه فوراً على الماك الذي سجل به الآن"
@@ -2421,29 +2414,51 @@ export const SubscriberManager: React.FC = () => {
                 </div>
               )}
 
-              {macActionType === 'lock' && (
-                <div className="space-y-3">
-                  <p className="text-sm text-slate-650 leading-relaxed font-sans">
-                    أدخل عنوان الماك الجديد يدوياً لقفل اشتراك <strong className="text-slate-900 font-bold">{macModalSub.fullName || macModalSub.username}</strong> على جهازه الجديد:
-                  </p>
-                  
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">عنوان الماك (MAC / Caller ID) <span className="text-rose-500">*</span></label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="AA:BB:CC:DD:EE:FF"
-                      value={macInputValue}
-                      onChange={(e) => setMacInputValue(e.target.value)}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm font-mono tracking-widest text-center focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
-                    />
-                  </div>
+              {macActionType === 'lock' && (() => {
+                const sess = sessions.find(s => s.username === macModalSub.username);
+                const currentMac = sess ? (sess.mac || sess.callerId || '') : '';
+                return (
+                  <div className="space-y-3">
+                    {currentMac ? (
+                      <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs font-sans leading-relaxed">
+                        <span className="font-bold block text-sm mb-1 text-emerald-950 flex items-center gap-1.5">
+                          <CheckCircle className="w-4 h-4 text-emerald-600" />
+                          <span>تم التقاط ماك المتصل تلقائياً!</span>
+                        </span>
+                        تمكن النظام من قراءة عنوان الماك الخاص بجهاز العميل المتصل أونلاين الآن وهو الموضح أدناه. يمكنك النقر على تأكيد القفل مباشرة أو تعديله إن أردت.
+                      </div>
+                    ) : (
+                      <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-xl text-amber-800 text-xs font-sans leading-relaxed">
+                        <span className="font-bold block mb-1 text-amber-950 flex items-center gap-1.5">
+                          <Info className="w-4 h-4 text-amber-600" />
+                          <span>العميل غير متصل حالياً</span>
+                        </span>
+                        لم يتم العثور على جهاز نشط للعميل لالتقاط الماك آدرس تلقائياً. يرجى كتابة عنوان الماك آدرس يدوياً في الحقل أدناه لقفل الاشتراك مسبقاً.
+                      </div>
+                    )}
 
-                  <div className="p-3 bg-blue-50/50 border border-blue-100 rounded-lg text-[11px] text-blue-800 font-sans leading-relaxed">
-                    يساعد قفل الماك (Caller ID) في منع أي شخص آخر من سرقة يوزر الاشتراك وتشغيله على أجهزة مجهولة أو كبائن أخرى.
+                    <p className="text-sm text-slate-650 leading-relaxed font-sans">
+                      أدخل أو راجع عنوان الماك لقفل اشتراك <strong className="text-slate-900 font-bold">{macModalSub.fullName || macModalSub.username}</strong> على جهازه الجديد:
+                    </p>
+                    
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">عنوان الماك (MAC / Caller ID) <span className="text-rose-500">*</span></label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="AA:BB:CC:DD:EE:FF"
+                        value={macInputValue}
+                        onChange={(e) => setMacInputValue(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm font-mono tracking-widest text-center focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                      />
+                    </div>
+
+                    <div className="p-3 bg-blue-50/50 border border-blue-100 rounded-lg text-[11px] text-blue-800 font-sans leading-relaxed">
+                      يساعد قفل الماك (Caller ID) في منع أي شخص آخر من سرقة يوزر الاشتراك وتشغيله على أجهزة مجهولة أو كبائن أخرى.
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {macActionType === 'error' && (
                 <div className="p-3.5 bg-rose-50 border border-rose-100 text-rose-800 text-xs rounded-lg font-sans leading-relaxed">
