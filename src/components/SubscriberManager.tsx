@@ -689,7 +689,8 @@ export const SubscriberManager: React.FC = () => {
     routerId: '',
     profileId: '',
     ipAddress: '',
-    macAddress: ''
+    macAddress: '',
+    whatsappAlertMode: 'auto' as 'auto' | 'manual'
   });
 
   const [renewData, setRenewData] = useState({
@@ -737,7 +738,8 @@ export const SubscriberManager: React.FC = () => {
       routerId: routers[0]?.id || '',
       profileId: profiles[0]?.id || '',
       ipAddress: '',
-      macAddress: ''
+      macAddress: '',
+      whatsappAlertMode: 'auto'
     });
     setAddModalOpen(true);
   };
@@ -752,7 +754,8 @@ export const SubscriberManager: React.FC = () => {
       routerId: sub.routerId,
       profileId: sub.profileId,
       ipAddress: sub.ipAddress || '',
-      macAddress: sub.macAddress || ''
+      macAddress: sub.macAddress || '',
+      whatsappAlertMode: sub.whatsappAlertMode || 'auto'
     });
     setEditModalOpen(true);
   };
@@ -790,7 +793,8 @@ export const SubscriberManager: React.FC = () => {
       routerId: formData.routerId,
       profileId: formData.profileId,
       ipAddress: formData.ipAddress || undefined,
-      macAddress: formData.macAddress || undefined
+      macAddress: formData.macAddress || undefined,
+      whatsappAlertMode: formData.whatsappAlertMode
     });
 
     setAddModalOpen(false);
@@ -816,10 +820,45 @@ export const SubscriberManager: React.FC = () => {
       routerId: formData.routerId,
       profileId: formData.profileId,
       ipAddress: formData.ipAddress || undefined,
-      macAddress: formData.macAddress || undefined
+      macAddress: formData.macAddress || undefined,
+      whatsappAlertMode: formData.whatsappAlertMode
     });
 
     setEditModalOpen(false);
+  };
+
+  const handleSendManualWhatsApp = async (sub: Subscriber) => {
+    if (!sub.phone) {
+      alert('العميل ليس لديه رقم هاتف مسجل للواتس اب.');
+      return;
+    }
+    
+    // Generate draft using existing template
+    const draftMessage = generateWhatsAppMessage(sub, whatsappTemplate);
+    
+    try {
+      const response = await fetch('/api/whatsapp/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        },
+        body: JSON.stringify({
+          phone: sub.phone,
+          message: draftMessage,
+          gatewayUrl: whatsappGatewayUrl
+        })
+      });
+      
+      const data = await response.json();
+      if (response.ok && data.success) {
+        alert(`تم إرسال رسالة تنبية انتهاء الاشتراك إلى المشترك "${sub.fullName}" بنجاح عبر الواتساب!`);
+      } else {
+        alert(`فشل الإرسال: ${data.message || data.error || 'خطأ غير معروف في السيرفر.'}`);
+      }
+    } catch (err: any) {
+      alert('خطأ في الاتصال أثناء إرسال الرسالة: ' + err.message);
+    }
   };
 
   const handleRenewSubmit = (e: React.FormEvent) => {
@@ -1877,6 +1916,20 @@ export const SubscriberManager: React.FC = () => {
                             <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin animate-duration-1000' : ''}`} />
                           </button>
 
+                          {/* Manual WhatsApp Alert Button */}
+                          <button
+                            onClick={() => handleSendManualWhatsApp(sub)}
+                            disabled={!sub.phone}
+                            className={`p-1.5 rounded-lg border transition-all cursor-pointer ${
+                              sub.phone
+                                ? 'bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100'
+                                : 'opacity-45 bg-slate-550/20 text-slate-400 border-slate-200 cursor-not-allowed'
+                            }`}
+                            title={sub.phone ? `إرسال تنبيه انتهاء الاشتراك عبر واتساب للمشترك يدوياً` : 'لا يوجد رقم هاتف مسجل لتنبيه الواتساب'}
+                          >
+                            <MessageSquare className="w-4 h-4 text-emerald-600" />
+                          </button>
+
                           {/* Modify Edit */}
                           <button
                             onClick={() => handleOpenEdit(sub)}
@@ -2048,6 +2101,19 @@ export const SubscriberManager: React.FC = () => {
                 </div>
               </div>
 
+              {/* WhatsApp notification alerts selection */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">نظام تنبيهات انتهاء الاشتراك (واتساب)</label>
+                <select
+                  value={formData.whatsappAlertMode}
+                  onChange={(e) => setFormData(prev => ({ ...prev, whatsappAlertMode: e.target.value as 'auto' | 'manual' }))}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm cursor-pointer focus:border-blue-500 outline-hidden"
+                >
+                  <option value="auto">تلقائي (بوت آلي يرسل قبل انتهاء الاشتراك بـ 2 يوم)</option>
+                  <option value="manual">يدوي فقط (يتم الضغط عليه من لوحة الإدارة يدوياً)</option>
+                </select>
+              </div>
+
               {/* Footer */}
               <div className="border-t border-slate-100 pt-4 mt-6 flex justify-end gap-2 text-sm font-sans">
                 <button
@@ -2175,6 +2241,19 @@ export const SubscriberManager: React.FC = () => {
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono"
                   />
                 </div>
+              </div>
+
+              {/* WhatsApp notification alerts selection */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">نظام تنبيهات انتهاء الاشتراك (واتساب)</label>
+                <select
+                  value={formData.whatsappAlertMode}
+                  onChange={(e) => setFormData(prev => ({ ...prev, whatsappAlertMode: e.target.value as 'auto' | 'manual' }))}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm cursor-pointer focus:border-blue-500 outline-hidden"
+                >
+                  <option value="auto">تلقائي (بوت آلي يرسل قبل انتهاء الاشتراك بـ 2 يوم)</option>
+                  <option value="manual">يدوي فقط (يتم الضغط عليه من لوحة الإدارة يدوياً)</option>
+                </select>
               </div>
 
               <div className="border-t border-slate-100 pt-4 mt-6 flex justify-end gap-2 text-sm font-sans">

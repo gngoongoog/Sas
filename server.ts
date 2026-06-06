@@ -6,6 +6,7 @@ import https from 'https';
 import http from 'http';
 import dotenv from 'dotenv';
 import fs from 'fs';
+import JSZip from 'jszip';
 
 // Import database, encryption and auth layers
 import db, { initDb, encrypt, decrypt } from './server/db';
@@ -457,15 +458,15 @@ async function startServer() {
   // POST /api/subscribers
   app.post('/api/subscribers', (req, res) => {
     try {
-      const { id, username, password, fullName, phone, routerId, profileId, ipAddress, status, createdAt, expiryDate, macAddress } = req.body;
+      const { id, username, password, fullName, phone, routerId, profileId, ipAddress, status, createdAt, expiryDate, macAddress, whatsappAlertMode } = req.body;
       if (!username || !password || !fullName || !routerId || !profileId) {
         return res.status(400).json({ error: 'تفاصيل اليوزر والرمز والاسم والراوتر والباقة حقول إجبارية للمشترك.' });
       }
 
       const finalId = id || `sub-${Date.now()}`;
       db.prepare(`
-        INSERT INTO subscribers (id, username, password, fullName, phone, routerId, profileId, ipAddress, status, createdAt, expiryDate, macAddress)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO subscribers (id, username, password, fullName, phone, routerId, profileId, ipAddress, status, createdAt, expiryDate, macAddress, whatsappAlertMode)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         finalId,
         username,
@@ -478,7 +479,8 @@ async function startServer() {
         status || 'active',
         createdAt || new Date().toISOString(),
         expiryDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-        macAddress || null
+        macAddress || null,
+        whatsappAlertMode || 'auto'
       );
 
       logToSql('system', 'success', `إضافة المشترك: ${fullName}`, `يوزر PPPoE: ${username}`);
@@ -493,7 +495,7 @@ async function startServer() {
   app.put('/api/subscribers/:id', (req, res) => {
     try {
       const { id } = req.params;
-      const { username, password, fullName, phone, routerId, profileId, ipAddress, status, expiryDate, macAddress } = req.body;
+      const { username, password, fullName, phone, routerId, profileId, ipAddress, status, expiryDate, macAddress, whatsappAlertMode } = req.body;
 
       const existing = db.prepare('SELECT password FROM subscribers WHERE id = ?').get(id) as any;
       const finalPassword = (password && password !== '••••••••') ? password : (existing?.password || '');
@@ -501,7 +503,7 @@ async function startServer() {
       // Update db row
       db.prepare(`
         UPDATE subscribers
-        SET username = ?, password = ?, fullName = ?, phone = ?, routerId = ?, profileId = ?, ipAddress = ?, status = ?, expiryDate = ?, macAddress = ?
+        SET username = ?, password = ?, fullName = ?, phone = ?, routerId = ?, profileId = ?, ipAddress = ?, status = ?, expiryDate = ?, macAddress = ?, whatsappAlertMode = ?
         WHERE id = ?
       `).run(
         username,
@@ -514,6 +516,7 @@ async function startServer() {
         status || 'active',
         expiryDate,
         macAddress || null,
+        whatsappAlertMode || 'auto',
         id
       );
 
@@ -735,6 +738,91 @@ async function startServer() {
     } catch (error: any) {
       console.error('[Backup List API] Error:', error);
       res.status(500).json({ error: 'فشل جلب قائمة النسخ الاحتياطية JSON: ' + error.message });
+    }
+  });
+
+  // 2b. Export JSON backup wrapped inside a ZIP compressed file
+  app.get('/api/settings/backup-json/zip-export', requireAdminAuth, async (req, res) => {
+    try {
+      const subscribers = db.prepare('SELECT * FROM subscribers').all() as any[];
+      const routers = db.prepare('SELECT * FROM routers').all() as any[];
+      const profiles = db.prepare('SELECT * FROM profiles').all() as any[];
+
+      const exportData = {
+        exportedAt: new Date().toISOString(),
+        generator: 'SuperSAS v4 compressed ZIP database backup',
+        subscribers,
+        routers,
+        profiles
+      };
+
+      const zip = new JSZip();
+      zip.file("supersas_backup_data.json", JSON.stringify(exportData, null, 2));
+      const zipBuffer = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+
+      const dateStr = new Date().toISOString().split('T')[0];
+      const filename = `SuperSAS_Backup_${dateStr}.zip`;
+
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
+      res.send(zipBuffer);
+    } catch (error: any) {
+      console.error('[Backup ZIP Export API] Error:', error);
+      res.status(500).json({ error: 'فشل تصدير النسخة الاحتياطية كملف ZIP مضغوط: ' + error.message });
+    }
+  });
+
+  // 2c. Send compressed ZIP backup directly via Telegram Bot
+  app.post('/api/settings/backup-json/send-telegram', requireAdminAuth, async (req, res) => {
+    try {
+      const { botToken, chatId } = req.body;
+      if (!botToken || !chatId) {
+        return res.status(400).json({ error: 'يرجى توفير توكن البوت ومعرف الدردشة لتليجرام.' });
+      }
+
+      const subscribers = db.prepare('SELECT * FROM subscribers').all() as any[];
+      const routers = db.prepare('SELECT * FROM routers').all() as any[];
+      const profiles = db.prepare('SELECT * FROM profiles').all() as any[];
+
+      const exportData = {
+        exportedAt: new Date().toISOString(),
+        generator: 'SuperSAS v4 Manual Database Export',
+        subscribers,
+        routers,
+        profiles
+      };
+
+      const zip = new JSZip();
+      zip.file("supersas_backup_data.json", JSON.stringify(exportData, null, 2));
+      const zipBuffer = await zip.generateAsync({ type: "nodebuffer", compression: "DEFLATE" });
+
+      const dateStr = new Date().toISOString().split('T')[0];
+      const filename = `SuperSAS_Backup_${dateStr}.zip`;
+
+      // Dispatch to Telegram Bot using standard FormData and fetch
+      const formData = new FormData();
+      const blob = new Blob([zipBuffer], { type: 'application/zip' });
+      formData.append('document', blob, filename);
+      formData.append('chat_id', chatId);
+      formData.append('caption', `📂 نسخة احتياطية مشفرة ومضغوطة تلقائياً بنجاح من نظام SuperSAS\n📅 التاريخ: ${new Date().toLocaleString('ar-IQ')}\n👥 إجمالي المشتركين: ${subscribers.length}\n⚙️ السيرفرات النشطة: ${routers.length}`);
+
+      const response = await fetch(`https://api.telegram.org/bot${botToken}/sendDocument`, {
+        method: 'POST',
+        body: formData
+      });
+
+      const resText = await response.json();
+      if (response.ok && resText.ok) {
+        logToSql('system', 'success', 'إرسال نسخة احتياطية مضضوطة لتليجرام', `تم إرسال الملف ${filename} بنجاح إلى المحادثة/القناة ${chatId}`);
+        res.json({ success: true, message: 'تم إرسال النسخة الاحتياطية المضغوطة لتليجرام بنجاح!' });
+      } else {
+        const errorMsg = resText.description || 'فشل استلام تليجرام للملف.';
+        logToSql('system', 'error', 'فشل إرسال النسخة الاحتياطية لتليجرام', errorMsg);
+        res.status(502).json({ error: 'فشل الإرسال لتليجرام: ' + errorMsg });
+      }
+    } catch (error: any) {
+      console.error('[Backup Telegram API] Error:', error);
+      res.status(500).json({ error: 'فشل إرسال النسخة الاحتياطية لتليجرام: ' + error.message });
     }
   });
 

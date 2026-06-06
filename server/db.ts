@@ -148,10 +148,16 @@ export function initDb() {
       createdAt TEXT DEFAULT (datetime('now')),
       expiryDate TEXT,
       macAddress TEXT,
+      whatsappAlertMode TEXT DEFAULT 'auto',
+      lastExpiryAlertSentAt TEXT,
       FOREIGN KEY(routerId) REFERENCES routers(id) ON DELETE RESTRICT,
       FOREIGN KEY(profileId) REFERENCES profiles(id) ON DELETE RESTRICT
     )
   `);
+
+  // Migrations for existing databases to support WhatsApp alert columns
+  try { db.exec("ALTER TABLE subscribers ADD COLUMN whatsappAlertMode TEXT DEFAULT 'auto'"); } catch (e) {}
+  try { db.exec("ALTER TABLE subscribers ADD COLUMN lastExpiryAlertSentAt TEXT"); } catch (e) {}
 
   // Create Cards table
   db.exec(`

@@ -21,7 +21,9 @@ import {
   Sparkles,
   Terminal,
   Code,
-  LifeBuoy
+  LifeBuoy,
+  FileArchive,
+  Send
 } from 'lucide-react';
 
 interface BackupFile {
@@ -38,6 +40,12 @@ export function SystemSettings() {
   const [backupEnabled, setBackupEnabled] = useState(false);
   const [backupInterval, setBackupInterval] = useState('daily');
   const [lastRun, setLastRun] = useState<string | null>(null);
+
+  // Telegram Settings State
+  const [telegramBotToken, setTelegramBotToken] = useState('');
+  const [telegramChatId, setTelegramChatId] = useState('');
+  const [sendingTelegram, setSendingTelegram] = useState(false);
+  const [exportingZip, setExportingZip] = useState(false);
 
   // 5 Network Stability Module States (Enabled by default to preserve maximum stability)
   const [stabilityStateEngine, setStabilityStateEngine] = useState(true);
@@ -72,6 +80,10 @@ export function SystemSettings() {
         setBackupEnabled(data.backup_json_enabled === 'true');
         setBackupInterval(data.backup_json_interval || 'daily');
         setLastRun(data.backup_json_last_run || null);
+        
+        // Load Telegram Settings
+        setTelegramBotToken(data.telegram_bot_token || '');
+        setTelegramChatId(data.telegram_chat_id || '');
 
         // Fetch stability options (defaulting to true if not configured)
         setStabilityStateEngine(data.stability_state_engine !== 'false');
@@ -119,6 +131,8 @@ export function SystemSettings() {
           settings: {
             backup_json_enabled: String(backupEnabled),
             backup_json_interval: backupInterval,
+            telegram_bot_token: telegramBotToken,
+            telegram_chat_id: telegramChatId,
             stability_state_engine: String(stabilityStateEngine),
             stability_offline_fallback: String(stabilityOfflineFallback),
             stability_mac_protection: String(stabilityMacProtection),
@@ -130,7 +144,7 @@ export function SystemSettings() {
       if (res.ok) {
         setFeedback({ 
           type: 'success', 
-          message: 'تم حفظ وتفعيل إعدادات الأمان ومزامنة استقرار الشبكة بنجاح!' 
+          message: 'تم حفظ وتفعيل إعدادات الأمان وقنوات ومزامنة استقرار الشبكة بنجاح!' 
         });
         // Refresh last run or internal states
         fetchBackupSettings();
@@ -217,6 +231,84 @@ export function SystemSettings() {
       });
     } finally {
       setExportingServer(false);
+    }
+  };
+
+  // Trigger direct ZIP export to browser download
+  const handleZipDirectDownload = async () => {
+    setExportingZip(true);
+    setFeedback(null);
+    try {
+      const res = await fetch('/api/settings/backup-json/zip-export', { headers: getHeaders() });
+      if (!res.ok) throw new Error('تعذر تصدير النسخة الاحتياطية كملف مضغوط.');
+      
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      
+      const dateStr = new Date().toISOString().slice(0, 10);
+      link.setAttribute('download', `SuperSAS_Backup_${dateStr}.zip`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      setFeedback({ 
+        type: 'success', 
+        message: 'تم تصدير النسخة الاحتياطية المضغوطة (ZIP) وتنزيلها للملفات بنجاح!' 
+      });
+    } catch (err: any) {
+      setFeedback({ 
+        type: 'error', 
+        message: 'فشل تنزيل ملف التصدير المضغوط: ' + err.message 
+      });
+    } finally {
+      setExportingZip(false);
+    }
+  };
+
+  // Dispatch current backup to Telegram
+  const handleSendTelegramBackup = async () => {
+    if (!telegramBotToken || !telegramChatId) {
+      setFeedback({
+        type: 'error',
+        message: 'يرجى إدخال توكن تليجرام ومعرف الدردشة لحفظ النسخة وإرسالها.'
+      });
+      return;
+    }
+
+    setSendingTelegram(true);
+    setFeedback(null);
+    try {
+      const res = await fetch('/api/settings/backup-json/send-telegram', {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({
+          botToken: telegramBotToken,
+          chatId: telegramChatId
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setFeedback({
+          type: 'success',
+          message: data.message || 'تم حزم وإرسال النسخة الاحتياطية كملف مضغوط إلى تليجرام بنجاح!'
+        });
+      } else {
+        setFeedback({
+          type: 'error',
+          message: data.error || 'فشل إرسال النسخة إلى تليجرام.'
+        });
+      }
+    } catch (err: any) {
+      setFeedback({
+        type: 'error',
+        message: 'فشل الاتصال لتصدير وإرسال النسخة الاحتياطية لتليجرام: ' + err.message
+      });
+    } finally {
+      setSendingTelegram(false);
     }
   };
 
@@ -325,23 +417,40 @@ export function SystemSettings() {
         {/* Panel 1: Exporters (Left/Top) */}
         <div className="lg:col-span-1 space-y-6">
           
-          {/* Exchanger Component - JSON Direct Download */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-5">
+          {/* Exchanger Component - JSON / ZIP Direct Download & Telegram backup */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
             <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
               <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl">
                 <Database className="w-5 h-5" />
               </div>
               <div>
-                <h2 className="text-sm font-bold text-slate-800">التصدير اليدوي الفوري</h2>
-                <span className="text-[10px] text-slate-400 font-mono">Manual Export Controls</span>
+                <h2 className="text-sm font-bold text-slate-800">تصدير وحفظ النسخة الاحتياطية</h2>
+                <span className="text-[10px] text-slate-400 font-mono">Backup & Telegram Export</span>
               </div>
             </div>
 
             <p className="text-xs text-slate-500 leading-relaxed">
-              يمكنك عمل نسخة احتياطية فورية لقاعدة البيانات وحفظها محلياً على جهازك أو تخزينها مباشرة داخل السيرفر لاستعادتها وقت الطوارئ.
+              يمكنك تحميل النسخة الاحتياطية مشفرة بصيغة ملف مضغوط ZIP أو إرسالها فوراً إلى قناتك أو محادثتك الخاصة على تليجرام.
             </p>
 
-            <div className="space-y-3 pt-2">
+            <div className="space-y-3 pt-1">
+              {/* ZIP direct download button */}
+              <button
+                onClick={handleZipDirectDownload}
+                disabled={exportingZip}
+                className="w-full flex items-center justify-between p-3.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-500/15 cursor-pointer"
+              >
+                <div className="flex items-center gap-2.5">
+                  {exportingZip ? (
+                    <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <FileArchive className="w-4 h-4" />
+                  )}
+                  <span>تحميل ملف مضغوط (.ZIP) مباشرة</span>
+                </div>
+                <ChevronRight className="w-4 h-4 opacity-50 shrink-0" />
+              </button>
+
               {/* Direct Browser Download Button */}
               <button
                 onClick={handleDirectDownload}
@@ -354,7 +463,7 @@ export function SystemSettings() {
                   ) : (
                     <Download className="w-4 h-4" />
                   )}
-                  <span>تحميل ملف JSON مباشرة للمتصفح</span>
+                  <span>تحميل ملف JSON عادي للمتصفح</span>
                 </div>
                 <ChevronRight className="w-4 h-4 opacity-50 shrink-0" />
               </button>
@@ -363,27 +472,76 @@ export function SystemSettings() {
               <button
                 onClick={handleTriggerServerBackup}
                 disabled={exportingServer}
-                className="w-full flex items-center justify-between p-3.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-slate-100 rounded-xl text-xs font-bold transition-all cursor-pointer border border-slate-800"
+                className="w-full flex items-center justify-between p-3.5 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-750 rounded-xl text-xs font-bold transition-all cursor-pointer border border-slate-200"
               >
                 <div className="flex items-center gap-2.5">
                   {exportingServer ? (
                     <div className="w-4 h-4 border-2 border-slate-400 border-t-white rounded-full animate-spin" />
                   ) : (
-                    <Server className="w-4 h-4 text-blue-400" />
+                    <Server className="w-4 h-4 text-slate-500" />
                   )}
                   <span>توليد وحفظ نسخة محلية بالسيرفر</span>
                 </div>
                 <ChevronRight className="w-4 h-4 opacity-45 shrink-0" />
               </button>
             </div>
+
+            {/* TELEGRAM SENDER BLOCK */}
+            <div className="border-t border-slate-100 pt-3 mt-3 space-y-3">
+              <span className="block text-xs font-bold text-slate-800">📬 إرسال النسخة عبر تليجرام (Telegram)</span>
+              
+              <div className="space-y-2">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 mb-0.5">توكن بوت تليجرام (Telegram Bot Token)</label>
+                  <input
+                    type="password"
+                    placeholder="123456789:ABCDefGhIjKlM..."
+                    value={telegramBotToken}
+                    onChange={(e) => setTelegramBotToken(e.target.value)}
+                    className="w-full px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100/50 focus:bg-white border border-slate-200 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 rounded-lg text-xs font-mono outline-hidden transition-all text-slate-800"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 mb-0.5">معرف الدردشة أو القناة (Telegram Chat ID)</label>
+                  <input
+                    type="text"
+                    placeholder="-100xxxxxxxxxx"
+                    value={telegramChatId}
+                    onChange={(e) => setTelegramChatId(e.target.value)}
+                    className="w-full px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100/50 focus:bg-white border border-slate-200 focus:border-blue-400 focus:ring-1 focus:ring-blue-400 rounded-lg text-xs font-mono outline-hidden transition-all text-slate-800"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleSendTelegramBackup}
+                  disabled={sendingTelegram || !telegramBotToken || !telegramChatId}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-sky-500 hover:bg-sky-600 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
+                >
+                  {sendingTelegram ? (
+                    <div className="w-3.5 h-3.5 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <Send className="w-3.5 h-3.5 animate-bounce" />
+                  )}
+                  <span>إرسال لـ Telegram</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSaveSettings()}
+                  disabled={savingSettings}
+                  className="px-3 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-lg text-xs font-bold cursor-pointer transition-all"
+                  title="حفظ التوكن في النظام"
+                >
+                  حفظ التوكن
+                </button>
+              </div>
+            </div>
             
-            <div className="p-3 bg-blue-50/50 border border-blue-100 rounded-xl">
-              <span className="block text-[10px] text-blue-800 font-bold mb-1">💡 البيانات المصدرة:</span>
-              <ul className="text-[10px] text-blue-600 space-y-1 pr-1 list-disc">
-                <li>بيانات كافة المشتركين المسجلين وحالاتهم.</li>
-                <li>عناوين ومعلومات اتصال سيرفرات المايكروتك.</li>
-                <li>قوالب باقات السرعة وعدادات الحسابات والأسعار.</li>
-              </ul>
+            <div className="p-2.5 bg-blue-50/50 border border-blue-100 rounded-lg text-[10px] text-blue-700 leading-relaxed">
+              ℹ️ يتم تشفير وضغط قاعدة البيانات تلقائياً بنظام (.zip) عالي الأمان لتعزيز المساحة وحماية خصوصية المشتركين والأكواد المرفقة بكفاءة.
             </div>
           </div>
 

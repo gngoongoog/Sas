@@ -44,6 +44,7 @@ export interface Subscriber {
   createdAt: string;
   expiryDate: string;
   macAddress?: string; // MAC Lock
+  whatsappAlertMode?: 'auto' | 'manual';
 }
 
 export interface PinCard {

@@ -415,5 +415,124 @@ export function startCronJobs(db: any, decrypt: (s: string) => string): void {
   // Run initial check 10 seconds after startup
   setTimeout(checkAndRunJsonBackup, 10000);
 
+  // --- Automated 2-day expiry WhatsApp notifications ---
+  async function sendAutomatedWhatsApp(sub: any) {
+    try {
+      const tempRow = db.prepare("SELECT value FROM settings WHERE key = 'whatsapp_template'").get() as any;
+      const methodRow = db.prepare("SELECT value FROM settings WHERE key = 'whatsapp_method'").get() as any;
+      const gateRow = db.prepare("SELECT value FROM settings WHERE key = 'whatsapp_gateway_url'").get() as any;
+
+      const templateText = tempRow?.value || "تنبيه: عزيزي المشترك {fullName}، نود إعلامكم بأن اشتراككم بالباقة {profileName} ينتهي بعد {daysLeft} أيام بتاريخ {expiryDate}. يرجى التجديد لتفادي انقطاع الخدمة.";
+      const method = methodRow?.value || 'url_scheme';
+      const gatewayUrl = gateRow?.value || '';
+
+      if (method !== 'http_api' || !gatewayUrl) {
+        console.log(`[SuperSAS Auto-WhatsApp] Skipped alert for ${sub.username}: WhatsApp gateway is not configured as HTTP_API.`);
+        return;
+      }
+
+      const profile = db.prepare("SELECT * FROM profiles WHERE id = ?").get(sub.profileId) as any;
+      const router = db.prepare("SELECT * FROM routers WHERE id = ?").get(sub.routerId) as any;
+
+      const currencyRow = db.prepare("SELECT value FROM settings WHERE key = 'currency'").get() as any;
+      const currency = currencyRow?.value || "IQD";
+      const priceFormatted = profile ? `${profile.price.toLocaleString()} ${currency}` : '0';
+
+      const expDate = new Date(sub.expiryDate);
+      const now = new Date();
+      const daysLeft = Math.max(0, Math.ceil((expDate.getTime() - now.getTime()) / (1000 * 3600 * 24)));
+
+      const message = templateText
+        .replace(/{fullName}/g, sub.fullName)
+        .replace(/{name}/g, sub.fullName)
+        .replace(/{username}/g, sub.username)
+        .replace(/{phone}/g, sub.phone || '')
+        .replace(/{profileName}/g, profile?.name || 'الافتراضية')
+        .replace(/{packageName}/g, profile?.name || 'الافتراضية')
+        .replace(/{expiryDate}/g, expDate.toLocaleDateString('ar-IQ'))
+        .replace(/{daysLeft}/g, String(daysLeft))
+        .replace(/{price}/g, priceFormatted)
+        .replace(/{routerName}/g, router?.name || 'سيرفر تلقائي');
+
+      let cleanPhone = sub.phone.replace(/[^0-9]/g, '');
+      if (cleanPhone.startsWith('07')) {
+        cleanPhone = '964' + cleanPhone.substring(1);
+      } else if (cleanPhone.startsWith('7')) {
+        cleanPhone = '964' + cleanPhone;
+      }
+
+      const targetUrl = gatewayUrl
+        .replace(/{phone}/g, encodeURIComponent(cleanPhone))
+        .replace(/{number}/g, encodeURIComponent(cleanPhone))
+        .replace(/{message}/g, encodeURIComponent(message))
+        .replace(/{msg}/g, encodeURIComponent(message));
+
+      console.log(`[SuperSAS Auto-WhatsApp] Dispatching auto-notification to ${sub.username} (${cleanPhone})...`);
+
+      const response = await fetch(targetUrl, { method: 'GET' });
+      const responseText = await response.text();
+
+      if (response.ok) {
+        // Mark as sent for this expiryDate
+        db.prepare("UPDATE subscribers SET lastExpiryAlertSentAt = ? WHERE id = ?").run(sub.expiryDate, sub.id);
+        
+        const logId = crypto.randomUUID();
+        db.prepare(`
+          INSERT INTO logs (id, timestamp, type, category, message, details)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `).run(
+          logId,
+          new Date().toISOString(),
+          'system',
+          'success',
+          `تنبيه الواتساب الآلي (قبل يومين): ${sub.fullName}`,
+          `تم إرسال تذكير الدفع التلقائي بنجاح للرقم ${sub.phone}.`
+        );
+        console.log(`[SuperSAS Auto-WhatsApp] Automatic WhatsApp alert sent to ${sub.username}`);
+      } else {
+        console.warn(`[SuperSAS Auto-WhatsApp] Warning: WhatsApp gateway returned status code ${response.status}`);
+      }
+    } catch (err: any) {
+      console.error(`[SuperSAS Auto-WhatsApp] Dispatch fail:`, err.message);
+    }
+  }
+
+  async function runAutoWhatsAppAlertsJob() {
+    try {
+      console.log(`[SuperSAS Cron] Scanning for subscribers expiring in 2 days for WhatsApp alerts...`);
+      const subs = db.prepare(`
+        SELECT s.* 
+        FROM subscribers s
+        WHERE s.status = 'active'
+          AND s.phone IS NOT NULL
+          AND s.phone != ''
+          AND s.expiryDate IS NOT NULL
+      `).all() as any[];
+
+      const now = new Date();
+      for (const sub of subs) {
+        const mode = sub.whatsappAlertMode || 'auto';
+        if (mode !== 'auto') continue;
+
+        const expDate = new Date(sub.expiryDate);
+        const diffTime = expDate.getTime() - now.getTime();
+        const diffDays = diffTime / (1000 * 3600 * 24);
+
+        // If remaining validity is between 1.5 days and 2.5 days (approx exactly 2 days left)
+        if (diffDays >= 1.5 && diffDays <= 2.5) {
+          if (sub.lastExpiryAlertSentAt !== sub.expiryDate) {
+            await sendAutomatedWhatsApp(sub);
+          }
+        }
+      }
+    } catch (e: any) {
+      console.error('[SuperSAS Cron] Error in automated WhatsApp cron execution:', e.message);
+    }
+  }
+
+  // Trigger once shortly on boot and then periodically
+  setTimeout(runAutoWhatsAppAlertsJob, 15000); 
+  setInterval(runAutoWhatsAppAlertsJob, 3 * 60 * 60 * 1000); // Check every 3 hours
+
   scheduleDailyBackup();
 }
