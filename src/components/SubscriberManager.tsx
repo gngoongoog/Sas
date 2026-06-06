@@ -702,6 +702,13 @@ export const SubscriberManager: React.FC = () => {
 
   const [renewError, setRenewError] = useState('');
   const [renewSuccess, setRenewSuccess] = useState('');
+  const [renewalSuccessData, setRenewalSuccessData] = useState<{
+    subscriberName: string;
+    profileName: string;
+    duration: string;
+    paymentMethod: string;
+    expiryDate: string;
+  } | null>(null);
 
   // Auto Generater helper for usernames
   const generateRandomUserAndPass = () => {
@@ -861,32 +868,69 @@ export const SubscriberManager: React.FC = () => {
     }
   };
 
-  const handleRenewSubmit = (e: React.FormEvent) => {
+  const handleRenewSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedSub) return;
 
     setRenewError('');
     setRenewSuccess('');
 
-    const res = renewSubscriber(
+    const profile = profiles.find(p => p.id === renewData.profileId);
+    let hrs: number | undefined = undefined;
+    let durationText = '';
+    if (renewData.durationOption === 'one_hour') {
+      hrs = 1;
+      durationText = 'ساعة واحدة';
+    } else if (renewData.durationOption === 'two_hours') {
+      hrs = 2;
+      durationText = 'ساعتان (2)';
+    } else if (renewData.durationOption === 'four_hours') {
+      hrs = 4;
+      durationText = '4 ساعات';
+    } else {
+      durationText = profile ? `${profile.validityDays} يوم (كامل الباقة)` : 'كامل الباقة';
+    }
+
+    const res = await renewSubscriber(
       selectedSub.id,
       renewData.profileId,
       renewData.paymentMethod,
       renewData.cardPin,
-      renewData.durationOption === 'one_hour' 
-        ? 1 
-        : renewData.durationOption === 'two_hours' 
-        ? 2 
-        : renewData.durationOption === 'four_hours' 
-        ? 4 
-        : undefined
+      hrs
     );
 
     if (res.success) {
       setRenewSuccess(res.message);
+      
+      const currentExpiry = new Date(selectedSub.expiryDate);
+      const baseDate = currentExpiry > new Date() ? currentExpiry : new Date();
+      const newExpiry = new Date(baseDate);
+      if (hrs) {
+        newExpiry.setHours(baseDate.getHours() + hrs);
+      } else if (profile) {
+        newExpiry.setDate(baseDate.getDate() + profile.validityDays);
+      }
+      
+      const formattedExpiry = newExpiry.toLocaleString('ar-YE', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+
+      setRenewalSuccessData({
+        subscriberName: selectedSub.fullName || selectedSub.username,
+        profileName: profile ? profile.name : 'غير معروف',
+        duration: durationText,
+        paymentMethod: renewData.paymentMethod === 'cash' ? '💵 تسديد نقدي (كاش)' : '💳 كرت شحن (PIN)',
+        expiryDate: formattedExpiry
+      });
+
       setTimeout(() => {
         setRenewModalOpen(false);
-      }, 1500);
+        setRenewSuccess('');
+      }, 1000);
     } else {
       setRenewError(res.message);
     }
@@ -2583,6 +2627,67 @@ export const SubscriberManager: React.FC = () => {
                 )}
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* 🚀 SUCCESS CONFIRMATION MODAL AFTER RENEWAL */}
+      {renewalSuccessData && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4" dir="rtl">
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-2xl max-w-md w-full overflow-hidden text-right animate-in zoom-in-95 duration-200">
+            {/* Soft Green Sparkle Top Bar */}
+            <div className="bg-emerald-600 text-white p-6 text-center flex flex-col items-center justify-center relative">
+              <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center animate-bounce duration-1000 mb-2">
+                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <h3 className="font-extrabold text-lg">تم تجديد الاشتراك بنجاح! 🎉</h3>
+              <p className="text-xs text-emerald-100 mt-1">تمت مزامنة البيانات وتغذية السيرفر فورياً</p>
+            </div>
+
+            {/* Success Details Table */}
+            <div className="p-6 space-y-4 font-sans text-sm">
+              <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200/50">
+                <div className="flex justify-between items-center border-b border-slate-200/50 pb-2">
+                  <span className="text-slate-500 font-bold">اسم المشترك:</span>
+                  <span className="text-slate-900 font-extrabold text-base">{renewalSuccessData.subscriberName}</span>
+                </div>
+                
+                <div className="flex justify-between items-center border-b border-slate-200/50 pb-2">
+                  <span className="text-slate-500">الباقة المفعلة:</span>
+                  <span className="bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-full text-xs font-black border border-emerald-100">
+                    {renewalSuccessData.profileName}
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center border-b border-slate-200/50 pb-2">
+                  <span className="text-slate-500 font-bold">فترة التفعيل/التمديد:</span>
+                  <span className="text-slate-800 font-bold">{renewalSuccessData.duration}</span>
+                </div>
+
+                <div className="flex justify-between items-center border-b border-slate-200/50 pb-2">
+                  <span className="text-slate-500">طريقة تسوية الدفع:</span>
+                  <span className="text-slate-800 font-bold">{renewalSuccessData.paymentMethod}</span>
+                </div>
+
+                <div className="flex flex-col gap-1 pt-1.5">
+                  <span className="text-slate-500 text-xs font-bold">تاريخ انتهاء الاشتراك الجديد:</span>
+                  <span className="text-emerald-700 font-mono font-black text-right text-sm">
+                    {renewalSuccessData.expiryDate}
+                  </span>
+                </div>
+              </div>
+
+              {/* Action Button */}
+              <button
+                type="button"
+                onClick={() => setRenewalSuccessData(null)}
+                className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition-all shadow-md active:scale-98 cursor-pointer text-center text-sm"
+              >
+                حسناً، فهمت وإغلاق النافذة 👍
+              </button>
+            </div>
           </div>
         </div>
       )}
