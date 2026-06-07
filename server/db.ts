@@ -209,6 +209,42 @@ export function initDb() {
     )
   `);
 
+  // Create OLT devices and ONU signals tables (SuperSAS Fiber Network)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS olt_devices (
+      id         TEXT PRIMARY KEY,
+      name       TEXT NOT NULL,
+      ip         TEXT NOT NULL,
+      port       INTEGER DEFAULT 22,
+      username   TEXT NOT NULL DEFAULT 'admin',
+      password   TEXT NOT NULL DEFAULT '',
+      model      TEXT DEFAULT 'VSOL V1600G1',
+      status     TEXT DEFAULT 'disconnected',
+      lastSync   TEXT,
+      createdAt  TEXT DEFAULT (datetime('now'))
+    );
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS onu_signals (
+      id           TEXT PRIMARY KEY,
+      oltId        TEXT NOT NULL,
+      oltPort      TEXT NOT NULL,
+      onuIndex     TEXT NOT NULL,
+      subscriberId TEXT,
+      onuSerial    TEXT,
+      rxPower      REAL,
+      txPower      REAL,
+      distance     INTEGER,
+      status       TEXT DEFAULT 'active',
+      lastUpdated  TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (oltId) REFERENCES olt_devices(id) ON DELETE CASCADE
+    );
+  `);
+
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_onu_signals_oltId        ON onu_signals(oltId);`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_onu_signals_subscriberId ON onu_signals(subscriberId);`);
+
   // Create Indexes
   db.exec(`CREATE INDEX IF NOT EXISTS idx_subscribers_username ON subscribers(username);`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_subscribers_status ON subscribers(status);`);
@@ -296,6 +332,103 @@ export function initDb() {
     `);
     insertSetting.run('currency', 'IQD');
     insertSetting.run('terminalScript', '# SuperSAS CLI Script Generator Active\n# All subscriber/profile actions will generate RouterOS commands here.\n');
+  }
+
+  // Pre-seed OLT Devices and ONU Signals if OLT is empty
+  const countOlt = db.prepare('SELECT count(*) as count FROM olt_devices').get() as { count: number };
+  if (countOlt.count === 0) {
+    console.log('[SuperSAS DB] Seeding dummy OLT and 5 distinct ONU signal states for live demonstration...');
+    
+    // Insert dummy OLT Device (password encrypted)
+    db.prepare(`
+      INSERT INTO olt_devices (id, name, ip, port, username, password, model, status, lastSync, createdAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+    `).run(
+      'olt-dummy',
+      'جهاز تجريبي - VSOL GPON OLT',
+      '192.168.10.250',
+      22,
+      'demo_reader',
+      encrypt('demo_masked_password_123'),
+      'VSOL V1600G1',
+      'online'
+    );
+
+    // Helpers to insert ONU signals
+    const insertOnu = db.prepare(`
+      INSERT INTO onu_signals (id, oltId, oltPort, onuIndex, subscriberId, onuSerial, rxPower, txPower, distance, status, lastUpdated)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `);
+
+    // 1. Excellent state (-18.2 dBm) - linked to ali_ahmed (sub-1)
+    insertOnu.run(
+      'olt-dummy-1-1',
+      'olt-dummy',
+      '0/1',
+      '1',
+      'sub-1',
+      'VSOL000000A1',
+      -18.2,
+      2.3,
+      350,
+      'active'
+    );
+
+    // 2. Good state (-22.5 dBm) - linked to mustafa_iraq (sub-2)
+    insertOnu.run(
+      'olt-dummy-1-2',
+      'olt-dummy',
+      '0/1',
+      '2',
+      'sub-2',
+      'VSOL000000B2',
+      -22.5,
+      1.8,
+      1250,
+      'active'
+    );
+
+    // 3. Warning state (-26.1 dBm) - linked to fatima_hassan (sub-3)
+    insertOnu.run(
+      'olt-dummy-1-3',
+      'olt-dummy',
+      '0/2',
+      '1',
+      'sub-3',
+      'VSOL000000C3',
+      -26.1,
+      1.4,
+      2900,
+      'active'
+    );
+
+    // 4. Critical state (-28.6 dBm) - linked to omar_farooq (sub-5)
+    insertOnu.run(
+      'olt-dummy-1-4',
+      'olt-dummy',
+      '0/2',
+      '2',
+      'sub-5',
+      'VSOL000000D4',
+      -28.6,
+      1.1,
+      4300,
+      'active'
+    );
+
+    // 5. Offline state (null dBm) - not linked to any subscriber (active status but null power or offline)
+    insertOnu.run(
+      'olt-dummy-1-5',
+      'olt-dummy',
+      '0/3',
+      '5',
+      null,
+      'VSOL000000E5',
+      null,
+      null,
+      null,
+      'offline'
+    );
   }
 
   console.log('[SuperSAS DB] Database initialized and pre-seeded.');

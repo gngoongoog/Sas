@@ -10,6 +10,7 @@ import { AiCopilot } from './components/AiCopilot';
 import { AlertManager } from './components/AlertManager';
 import { PwaInstallPrompt } from './components/PwaInstallPrompt';
 import { SystemSettings } from './components/SystemSettings';
+import FiberNetwork from './components/FiberNetwork';
 
 import { 
   Users, 
@@ -34,11 +35,14 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
-  Database
+  Database,
+  Sun,
+  Moon,
+  Palette
 } from 'lucide-react';
 
 function AppContent() {
-  const { isAuthenticated, login, logout, stats } = useSystem();
+  const { isAuthenticated, login, logout, stats, theme, setTheme } = useSystem();
   
   // Login flow states
   const [username, setUsername] = useState('admin');
@@ -47,7 +51,7 @@ function AppContent() {
   const [loginError, setLoginError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'subscribers' | 'profiles' | 'vouchers' | 'routers' | 'scripts' | 'ai' | 'alerts' | 'settings'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'subscribers' | 'profiles' | 'vouchers' | 'routers' | 'gpon' | 'scripts' | 'ai' | 'alerts' | 'settings'>('dashboard');
   const [dateStr, setDateStr] = useState('');
 
   // Mobile navigation and touch gestures states
@@ -60,8 +64,8 @@ function AppContent() {
     return localStorage.getItem('dismissed_gesture_hint') !== 'true';
   });
 
-  const tabsOrder: ('dashboard' | 'subscribers' | 'profiles' | 'vouchers' | 'routers' | 'scripts' | 'ai' | 'alerts' | 'settings')[] = [
-    'dashboard', 'subscribers', 'profiles', 'vouchers', 'routers', 'scripts', 'ai', 'alerts', 'settings'
+  const tabsOrder: ('dashboard' | 'subscribers' | 'profiles' | 'vouchers' | 'routers' | 'gpon' | 'scripts' | 'ai' | 'alerts' | 'settings')[] = [
+    'dashboard', 'subscribers', 'profiles', 'vouchers', 'routers', 'gpon', 'scripts', 'ai', 'alerts', 'settings'
   ];
 
   // Detect gesture triggers for smooth swipe-to-navigate between views
@@ -307,20 +311,20 @@ function AppContent() {
 
   return (
     <div 
-      className="min-h-screen bg-slate-50 flex flex-col md:flex-row text-right overflow-x-hidden" 
+      className={`min-h-screen theme-${theme} bg-bg-app text-text-main flex flex-col md:flex-row text-right overflow-x-hidden transition-colors duration-300`} 
       dir="rtl"
     >
       {/* 1. Desktop Persistent Sidebar Drawer (Hidden on Mobile) */}
-      <aside className="hidden md:flex w-64 bg-slate-900 text-slate-300 flex-col justify-between border-l border-slate-800 shadow-xl shrink-0 select-none">
+      <aside className="hidden md:flex w-64 bg-bg-sidebar text-text-sidebar flex-col justify-between border-l border-border-main shadow-xl shrink-0 select-none transition-colors duration-300">
         <div>
           {/* Main Logo and name Header */}
-          <div className="p-6 flex items-center gap-3 border-b border-slate-800 bg-slate-900/50">
-            <div className="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-blue-500/20 font-sans animate-pulse">
+          <div className="p-6 flex items-center gap-3 border-b border-border-main bg-black/10">
+            <div className="w-10 h-10 rounded-lg bg-primary-main flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-primary-main/20 font-sans animate-pulse">
               چنچون
             </div>
             <div>
-              <h1 className="text-white font-bold text-base leading-tight font-sans">مشتركين چنچون</h1>
-              <span className="inline-block px-2 py-0.5 mt-1 bg-slate-950 border border-slate-800 text-[9px] font-mono text-slate-400 rounded-full">
+              <h1 className="text-text-main font-bold text-base leading-tight font-sans">مشتركين چنچون</h1>
+              <span className="inline-block px-2 py-0.5 mt-1 bg-black/20 border border-border-main text-[9px] font-mono text-text-desc rounded-full">
                 SQLite Fullstack Real-Time
               </span>
             </div>
@@ -332,8 +336,8 @@ function AppContent() {
               onClick={() => { setActiveTab('dashboard'); setIsDrawerOpen(false); }}
               className={`w-full flex items-center gap-3 p-3 rounded-lg transition-colors select-none cursor-pointer text-right ${
                 activeTab === 'dashboard' 
-                  ? 'bg-blue-600/10 text-blue-400 font-bold border border-blue-600/20 shadow-sm' 
-                  : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
+                  ? 'bg-primary-main/10 text-primary-main font-bold border border-primary-main/20 shadow-sm' 
+                  : 'text-text-sidebar/70 hover:bg-bg-sidebar-active hover:text-text-main'
               }`}
             >
               <Gauge className="w-4 h-4 text-sky-400" />
@@ -344,8 +348,8 @@ function AppContent() {
               onClick={() => { setActiveTab('subscribers'); setIsDrawerOpen(false); }}
               className={`w-full flex items-center gap-3 p-3 rounded-lg transition-colors select-none cursor-pointer text-right ${
                 activeTab === 'subscribers' 
-                  ? 'bg-blue-600/10 text-blue-400 font-bold border border-blue-600/20 shadow-sm' 
-                  : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
+                  ? 'bg-primary-main/10 text-primary-main font-bold border border-primary-main/20 shadow-sm' 
+                  : 'text-text-sidebar/70 hover:bg-bg-sidebar-active hover:text-text-main'
               }`}
             >
               <Users className="w-4 h-4 text-emerald-400" />
@@ -356,8 +360,8 @@ function AppContent() {
               onClick={() => { setActiveTab('profiles'); setIsDrawerOpen(false); }}
               className={`w-full flex items-center gap-3 p-3 rounded-lg transition-colors select-none cursor-pointer text-right ${
                 activeTab === 'profiles' 
-                  ? 'bg-blue-600/10 text-blue-400 font-bold border border-blue-600/20 shadow-sm' 
-                  : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
+                  ? 'bg-primary-main/10 text-primary-main font-bold border border-primary-main/20 shadow-sm' 
+                  : 'text-text-sidebar/70 hover:bg-bg-sidebar-active hover:text-text-main'
               }`}
             >
               <Sliders className="w-4 h-4 text-amber-400" />
@@ -368,8 +372,8 @@ function AppContent() {
               onClick={() => { setActiveTab('vouchers'); setIsDrawerOpen(false); }}
               className={`w-full flex items-center gap-3 p-3 rounded-lg transition-colors select-none cursor-pointer text-right ${
                 activeTab === 'vouchers' 
-                  ? 'bg-blue-600/10 text-blue-400 font-bold border border-blue-600/20 shadow-sm' 
-                  : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
+                  ? 'bg-primary-main/10 text-primary-main font-bold border border-primary-main/20 shadow-sm' 
+                  : 'text-text-sidebar/70 hover:bg-bg-sidebar-active hover:text-text-main'
               }`}
             >
               <CreditCard className="w-4 h-4 text-indigo-400" />
@@ -380,8 +384,8 @@ function AppContent() {
               onClick={() => { setActiveTab('routers'); setIsDrawerOpen(false); }}
               className={`w-full flex items-center gap-3 p-3 rounded-lg transition-colors select-none cursor-pointer text-right ${
                 activeTab === 'routers' 
-                  ? 'bg-blue-600/10 text-blue-400 font-bold border border-blue-600/20 shadow-sm' 
-                  : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
+                  ? 'bg-primary-main/10 text-primary-main font-bold border border-primary-main/20 shadow-sm' 
+                  : 'text-text-sidebar/70 hover:bg-bg-sidebar-active hover:text-text-main'
               }`}
             >
               <Server className="w-4 h-4 text-amber-500" />
@@ -389,11 +393,23 @@ function AppContent() {
             </button>
 
             <button
+              onClick={() => { setActiveTab('gpon'); setIsDrawerOpen(false); }}
+              className={`w-full flex items-center gap-3 p-3 rounded-lg transition-colors select-none cursor-pointer text-right ${
+                activeTab === 'gpon' 
+                  ? 'bg-primary-main/10 text-primary-main font-bold border border-primary-main/20 shadow-sm' 
+                  : 'text-text-sidebar/70 hover:bg-bg-sidebar-active hover:text-text-main'
+              }`}
+            >
+              <Wifi className="w-4 h-4 text-sky-400 animate-pulse" />
+              <span>مراقبة شبكة الألياف GPON</span>
+            </button>
+
+            <button
               onClick={() => { setActiveTab('scripts'); setIsDrawerOpen(false); }}
               className={`w-full flex items-center gap-3 p-3 rounded-lg transition-colors select-none cursor-pointer text-right ${
                 activeTab === 'scripts' 
-                  ? 'bg-blue-600/10 text-blue-400 font-bold border border-blue-600/20 shadow-sm' 
-                  : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
+                  ? 'bg-primary-main/10 text-primary-main font-bold border border-primary-main/20 shadow-sm' 
+                  : 'text-text-sidebar/70 hover:bg-bg-sidebar-active hover:text-text-main'
               }`}
             >
               <TerminalIcon className="w-4 h-4 text-purple-400" />
@@ -404,8 +420,8 @@ function AppContent() {
               onClick={() => { setActiveTab('ai'); setIsDrawerOpen(false); }}
               className={`w-full flex items-center gap-3 p-3 rounded-lg transition-colors select-none cursor-pointer text-right ${
                 activeTab === 'ai' 
-                  ? 'bg-blue-600/10 text-blue-400 font-bold border border-blue-600/20 shadow-sm' 
-                  : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
+                  ? 'bg-primary-main/10 text-primary-main font-bold border border-primary-main/20 shadow-sm' 
+                  : 'text-text-sidebar/70 hover:bg-bg-sidebar-active hover:text-text-main'
               }`}
             >
               <Bot className="w-4 h-4 text-rose-400" />
@@ -416,8 +432,8 @@ function AppContent() {
               onClick={() => { setActiveTab('alerts'); setIsDrawerOpen(false); }}
               className={`w-full flex items-center gap-3 p-3 rounded-lg transition-colors select-none cursor-pointer text-right ${
                 activeTab === 'alerts' 
-                  ? 'bg-blue-600/10 text-blue-400 font-bold border border-blue-600/20 shadow-sm' 
-                  : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
+                  ? 'bg-primary-main/10 text-primary-main font-bold border border-primary-main/20 shadow-sm' 
+                  : 'text-text-sidebar/70 hover:bg-bg-sidebar-active hover:text-text-main'
               }`}
             >
               <Bell className="w-4 h-4 text-red-400" />
@@ -428,8 +444,8 @@ function AppContent() {
               onClick={() => { setActiveTab('settings'); setIsDrawerOpen(false); }}
               className={`w-full flex items-center gap-3 p-3 rounded-lg transition-colors select-none cursor-pointer text-right ${
                 activeTab === 'settings' 
-                  ? 'bg-blue-600/10 text-blue-400 font-bold border border-blue-600/20 shadow-sm' 
-                  : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
+                  ? 'bg-primary-main/10 text-primary-main font-bold border border-primary-main/20 shadow-sm' 
+                  : 'text-text-sidebar/70 hover:bg-bg-sidebar-active hover:text-text-main'
               }`}
             >
               <Settings className="w-4 h-4 text-slate-400" />
@@ -662,6 +678,19 @@ function AppContent() {
               </button>
 
               <button
+                onClick={() => { setActiveTab('gpon'); setIsDrawerOpen(false); }}
+                className={`w-full flex items-center justify-between p-3.5 rounded-xl transition-all ${
+                  activeTab === 'gpon' ? 'bg-blue-600/15 text-blue-400 font-bold border border-blue-600/20' : 'hover:bg-slate-850 text-slate-400'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <Wifi className="w-4 h-4 text-sky-400" />
+                  <span>مراقبة شبكة الألياف GPON</span>
+                </div>
+                <ChevronLeft className="w-3.5 h-3.5" />
+              </button>
+
+              <button
                 onClick={() => { setActiveTab('scripts'); setIsDrawerOpen(false); }}
                 className={`w-full flex items-center justify-between p-3.5 rounded-xl transition-all ${
                   activeTab === 'scripts' ? 'bg-blue-600/15 text-blue-400 font-bold border border-blue-600/20' : 'hover:bg-slate-850 text-slate-400'
@@ -739,21 +768,21 @@ function AppContent() {
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden pb-16 md:pb-0">
         
         {/* Modern Header bar (Responsive styled) */}
-        <header className="h-14 md:h-16 bg-white border-b border-slate-200 px-4 md:px-8 flex items-center justify-between shadow-xs shrink-0 z-10 select-none">
+        <header className="h-14 md:h-16 bg-bg-card border-b border-border-main px-4 md:px-8 flex items-center justify-between shadow-xs shrink-0 z-10 select-none transition-colors duration-300">
           <div className="flex items-center gap-3 md:gap-6">
             {/* Logo display on smartphones instead of search */}
             <div className="md:hidden flex items-center gap-2">
               <button
                 onClick={() => setIsDrawerOpen(true)}
-                className="p-1.5 hover:bg-slate-100 rounded-xl text-slate-800 cursor-pointer animate-pulse"
+                className="p-1.5 hover:bg-black/5 rounded-xl text-text-main cursor-pointer animate-pulse"
                 title="افتح القائمة"
               >
-                <Menu className="w-5 h-5 text-indigo-600" />
+                <Menu className="w-5 h-5 text-primary-main" />
               </button>
               
               <div className="flex flex-col text-right">
-                <span className="text-xs font-black text-slate-950 font-sans tracking-tight leading-none">لوحة چنچون</span>
-                <span className="text-[8px] text-slate-500 font-mono">M.U.S Control v1.02</span>
+                <span className="text-xs font-black text-text-main font-sans tracking-tight leading-none">لوحة چنچون</span>
+                <span className="text-[8px] text-text-desc font-mono">M.U.S Control v1.02</span>
               </div>
             </div>
 
@@ -763,27 +792,90 @@ function AppContent() {
                 type="text" 
                 placeholder="بحث عام آمن..." 
                 disabled
-                className="bg-slate-100 border-none rounded-full px-10 py-1.5 text-xs w-48 md:w-64 text-right outline-hidden cursor-not-allowed opacity-50"
+                className="bg-black/5 border-none rounded-full px-10 py-1.5 text-xs w-48 md:w-64 text-right outline-hidden cursor-not-allowed opacity-50 text-text-main"
               />
-              <svg className="w-4 h-4 absolute right-4 top-2.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 absolute right-4 top-2.5 text-text-desc" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
               </svg>
             </div>
 
             <button 
               onClick={() => setActiveTab('alerts')}
-              className="hidden sm:flex items-center gap-2 hover:bg-slate-50 p-1.5 rounded-lg transition-colors cursor-pointer"
+              className="hidden sm:flex items-center gap-2 hover:bg-black/5 p-1.5 rounded-lg transition-colors cursor-pointer"
             >
               <span className="w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
-              <span className="text-xs font-semibold text-slate-600">إنذارات النظام ومراقبة تلغرام</span>
+              <span className="text-xs font-semibold text-text-desc">إنذارات النظام ومراقبة تلغرام</span>
             </button>
           </div>
 
-          <div className="flex items-center gap-2 md:gap-3">
+          <div className="flex items-center gap-2 md:gap-4">
+            {/* Quick Theme Switcher */}
+            <div className="flex items-center gap-1 border border-border-main p-1 rounded-full bg-black/5 mini-theme-switcher select-none">
+              <button
+                onClick={() => setTheme('light')}
+                title="الوضع المضيء"
+                className={`w-5 h-5 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+                  theme === 'light' ? 'bg-white shadow-xs text-amber-500 scale-110' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Sun className="w-3.5 h-3.5" />
+              </button>
+              
+              <button
+                onClick={() => setTheme('dark')}
+                title="الوضع الداكن"
+                className={`w-5 h-5 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+                  theme === 'dark' ? 'bg-slate-800 shadow-xs text-blue-400 scale-110' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Moon className="w-3.5 h-3.5" />
+              </button>
+
+              <button
+                onClick={() => setTheme('blue')}
+                title="وضع المحيط الأزرق"
+                className={`w-5 h-5 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+                  theme === 'blue' ? 'bg-sky-950 text-sky-450 scale-110 ring-1 ring-sky-500/50' : 'text-slate-400 hover:text-blue-200'
+                }`}
+              >
+                <div className="w-2.5 h-2.5 rounded-full bg-sky-500" />
+              </button>
+
+              <button
+                onClick={() => setTheme('purple')}
+                title="وضع البنفسج الفاخر"
+                className={`w-5 h-5 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+                  theme === 'purple' ? 'bg-indigo-950 text-purple-450 scale-110 ring-1 ring-purple-500/50' : 'text-slate-400 hover:text-purple-200'
+                }`}
+              >
+                <div className="w-2.5 h-2.5 rounded-full bg-purple-500" />
+              </button>
+
+              <button
+                onClick={() => setTheme('emerald')}
+                title="وضع الزمرد الأخضر"
+                className={`w-5 h-5 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+                  theme === 'emerald' ? 'bg-emerald-950 text-emerald-450 scale-110 ring-1 ring-emerald-500/50' : 'text-slate-400 hover:text-emerald-200'
+                }`}
+              >
+                <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+              </button>
+
+              <button
+                onClick={() => setTheme('brown')}
+                title="الوضع البني الفاتح الهادئ"
+                className={`w-5 h-5 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+                  theme === 'brown' ? 'bg-amber-950 text-amber-500 scale-110 ring-1 ring-amber-500/50' : 'text-slate-400 hover:text-amber-200'
+                }`}
+              >
+                <div className="w-2.5 h-2.5 rounded-full bg-amber-600" />
+              </button>
+            </div>
+
             {/* Quick action button */}
             <button 
               onClick={() => setActiveTab('subscribers')}
-              className="bg-blue-600 text-white px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 hover:bg-blue-700 transition-colors shadow-md shadow-blue-600/20 cursor-pointer scale-95 md:scale-100"
+              className="bg-primary-main text-white px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 hover:opacity-90 transition-all shadow-md shadow-primary-main/20 cursor-pointer scale-95 md:scale-100"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
@@ -792,7 +884,7 @@ function AppContent() {
               <span className="xs:hidden">إضافة</span>
             </button>
 
-            <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-slate-200 border border-slate-300 flex items-center justify-center text-slate-600 font-bold text-xs font-mono">
+            <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-primary-main/15 border border-primary-main/25 flex items-center justify-center text-primary-main font-bold text-xs font-mono">
               SAS
             </div>
           </div>
@@ -802,7 +894,7 @@ function AppContent() {
         <main 
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
-          className="flex-1 p-4 md:p-8 overflow-y-auto bg-slate-50 relative selection:bg-blue-100 transition-all select-none"
+          className="flex-1 p-4 md:p-8 overflow-y-auto bg-bg-app text-text-main relative selection:bg-primary-main/20 transition-all select-none duration-300"
         >
           {/* Swipe gesture tutorial pill (displayed only once to help network admins navigate effortlessly) */}
           {showGestureHint && (
@@ -828,6 +920,7 @@ function AppContent() {
             {activeTab === 'profiles' && <ProfileManager />}
             {activeTab === 'vouchers' && <VoucherManager />}
             {activeTab === 'routers' && <RouterConfig />}
+            {activeTab === 'gpon' && <FiberNetwork />}
             {activeTab === 'scripts' && <ScriptTerminal />}
             {activeTab === 'ai' && <AiCopilot />}
             {activeTab === 'alerts' && <AlertManager />}

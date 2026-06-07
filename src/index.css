@@ -1,14 +1,110 @@
 @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
+:root {
+  --primary: #2563eb;
+  --bg-app: #f8fafc;
+  --bg-card: #ffffff;
+  --text-main: #0f172a;
+  --text-desc: #475569;
+  --border-main: #e2e8f0;
+  --bg-sidebar: #0f172a;
+  --bg-sidebar-active: #1e293b;
+  --text-sidebar: #cbd5e1;
+}
+
+.theme-light {
+  --primary: #2563eb;
+  --bg-app: #f8fafc;
+  --bg-card: #ffffff;
+  --text-main: #0f172a;
+  --text-desc: #475569;
+  --border-main: #e2e8f0;
+  --bg-sidebar: #0f172a;
+  --bg-sidebar-active: #1e293b;
+  --text-sidebar: #cbd5e1;
+}
+
+.theme-dark {
+  --primary: #3b82f6;
+  --bg-app: #030712;
+  --bg-card: #1f2937;
+  --text-main: #f9fafb;
+  --text-desc: #9ca3af;
+  --border-main: #374151;
+  --bg-sidebar: #111827;
+  --bg-sidebar-active: #1f2937;
+  --text-sidebar: #e5e7eb;
+}
+
+.theme-blue {
+  --primary: #0ea5e9;
+  --bg-app: #0f172a;
+  --bg-card: #1e293b;
+  --text-main: #f8fafc;
+  --text-desc: #cbd5e1;
+  --border-main: #334155;
+  --bg-sidebar: #1e293b;
+  --bg-sidebar-active: #334155;
+  --text-sidebar: #e2e8f0;
+}
+
+.theme-purple {
+  --primary: #c084fc;
+  --bg-app: #1e1b4b;
+  --bg-card: #312e81;
+  --text-main: #f5f3ff;
+  --text-desc: #c7d2fe;
+  --border-main: #4338ca;
+  --bg-sidebar: #312e81;
+  --bg-sidebar-active: #4338ca;
+  --text-sidebar: #e0e7ff;
+}
+
+.theme-emerald {
+  --primary: #059669;
+  --bg-app: #f0fdf4;
+  --bg-card: #ffffff;
+  --text-main: #064e3b;
+  --text-desc: #047857;
+  --border-main: #bbf7d0;
+  --bg-sidebar: #064e3b;
+  --bg-sidebar-active: #047857;
+  --text-sidebar: #d1fae5;
+}
+
+.theme-brown {
+  --primary: #b45309;
+  --bg-app: #faf5ee;
+  --bg-card: #ffffff;
+  --text-main: #451a03;
+  --text-desc: #78350f;
+  --border-main: #f1e2cd;
+  --bg-sidebar: #451a03;
+  --bg-sidebar-active: #78350f;
+  --text-sidebar: #fef3c7;
+}
+
 @theme {
   --font-sans: 'Cairo', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
+  
+  --color-primary-main: var(--primary);
+  --color-bg-app: var(--bg-app);
+  --color-bg-card: var(--bg-card);
+  --color-text-main: var(--text-main);
+  --color-text-desc: var(--text-desc);
+  --color-border-main: var(--border-main);
+  --color-bg-sidebar: var(--bg-sidebar);
+  --color-bg-sidebar-active: var(--bg-sidebar-active);
+  --color-text-sidebar: var(--text-sidebar);
 }
 
 body {
   font-family: 'Cairo', system-ui, -apple-system, sans-serif;
-  background-color: var(--color-slate-50);
+  background-color: var(--bg-app);
+  color: var(--text-main);
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
 }
 
 /* Custom scrollbar styling for a polished, elegant look on Windows */
@@ -18,17 +114,18 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--color-slate-100, #f1f5f9);
-  border-radius: 9999px;
+  background: var(--bg-app);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--color-slate-300, #cbd5e1);
+  background: var(--primary);
+  opacity: 0.3;
   border-radius: 9999px;
-  border: 1px solid var(--color-slate-100, #f1f5f9);
+  border: 1px solid var(--bg-app);
   transition: background-color 0.2s;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-slate-400, #94a3b8);
+  background: var(--primary);
+  opacity: 0.8;
 }

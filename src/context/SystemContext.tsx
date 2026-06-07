@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Router, PPPoEProfile, Subscriber, PinCard, ActiveSession, SystemLog, Stats } from '../types';
+import { Router, PPPoEProfile, Subscriber, PinCard, ActiveSession, SystemLog, Stats, OltDevice, OnuSignal } from '../types';
 
 interface SystemContextType {
   token: string | null;
@@ -14,6 +14,8 @@ interface SystemContextType {
   cards: PinCard[];
   sessions: ActiveSession[];
   logs: SystemLog[];
+  oltDevices: OltDevice[];
+  onuSignals: OnuSignal[];
   currency: 'IQD' | 'USD';
   setCurrency: (currency: 'IQD' | 'USD') => void;
   terminalScript: string;
@@ -54,6 +56,8 @@ interface SystemContextType {
   clearLogs: () => Promise<void>;
 
   stats: Stats;
+  theme: 'light' | 'dark' | 'blue' | 'purple' | 'emerald' | 'brown';
+  setTheme: (theme: 'light' | 'dark' | 'blue' | 'purple' | 'emerald' | 'brown') => void;
 }
 
 const SystemContext = createContext<SystemContextType | undefined>(undefined);
@@ -62,6 +66,26 @@ export const SystemProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // Store JWT token completely in-memory (not localStorage) as requested
   const [token, setToken] = useState<string | null>(null);
 
+  // Theme setup
+  const [theme, setThemeState] = useState<'light' | 'dark' | 'blue' | 'purple' | 'emerald' | 'brown'>(() => {
+    return (localStorage.getItem('sys_theme') as 'light' | 'dark' | 'blue' | 'purple' | 'emerald' | 'brown') || 'light';
+  });
+
+  const setTheme = (newTheme: 'light' | 'dark' | 'blue' | 'purple' | 'emerald' | 'brown') => {
+    localStorage.setItem('sys_theme', newTheme);
+    setThemeState(newTheme);
+  };
+
+  // Sync theme class to document elements for global Tailwind CSS variables cascade
+  useEffect(() => {
+    const classes = ['theme-light', 'theme-dark', 'theme-blue', 'theme-purple', 'theme-emerald', 'theme-brown'];
+    document.documentElement.classList.remove(...classes);
+    document.body.classList.remove(...classes);
+    
+    document.documentElement.classList.add(`theme-${theme}`);
+    document.body.classList.add(`theme-${theme}`);
+  }, [theme]);
+
   // Entities state
   const [routers, setRouters] = useState<Router[]>([]);
   const [profiles, setProfiles] = useState<PPPoEProfile[]>([]);
@@ -69,6 +93,8 @@ export const SystemProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [cards, setCards] = useState<PinCard[]>([]);
   const [sessions, setSessions] = useState<ActiveSession[]>([]);
   const [logs, setLogs] = useState<SystemLog[]>([]);
+  const [oltDevices, setOltDevices] = useState<OltDevice[]>([]);
+  const [onuSignals, setOnuSignals] = useState<OnuSignal[]>([]);
   const [currency, setCurrency] = useState<'IQD' | 'USD'>('IQD');
   const [terminalScript, setTerminalScript] = useState<string>(
     '# SuperSAS CLI Script Generator Active\n# All subscriber/profile actions will generate RouterOS commands here.\n'
@@ -132,14 +158,16 @@ export const SystemProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (!token) return;
     try {
       const headers = authHeaders();
-      const [rRes, pRes, sRes, cRes, sessRes, lRes, setRes] = await Promise.all([
+      const [rRes, pRes, sRes, cRes, sessRes, lRes, setRes, oltRes, sigRes] = await Promise.all([
         fetch('/api/routers', { headers }),
         fetch('/api/profiles', { headers }),
         fetch('/api/subscribers', { headers }),
         fetch('/api/cards', { headers }),
         fetch('/api/sessions', { headers }),
         fetch('/api/logs', { headers }),
-        fetch('/api/settings', { headers })
+        fetch('/api/settings', { headers }),
+        fetch('/api/olt', { headers }),
+        fetch('/api/olt/signals/all', { headers })
       ]);
 
       // Check auto logouts
@@ -158,6 +186,8 @@ export const SystemProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const sessionsData = sessRes.ok ? await sessRes.json() : [];
       const logsData = lRes.ok ? await lRes.json() : [];
       const settingsData = setRes.ok ? await setRes.json() : {};
+      const oltData = oltRes && oltRes.ok ? await oltRes.json() : [];
+      const sigData = sigRes && sigRes.ok ? await sigRes.json() : [];
 
       setRouters(routersData);
       setProfiles(profilesData);
@@ -165,6 +195,8 @@ export const SystemProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setCards(cardsData);
       setSessions(sessionsData);
       setLogs(logsData);
+      setOltDevices(oltData);
+      setOnuSignals(sigData);
 
       if (settingsData.currency) {
         setCurrency(settingsData.currency as 'IQD' | 'USD');
@@ -199,11 +231,13 @@ export const SystemProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const slowInterval = setInterval(async () => {
       const h = { Authorization: `Bearer ${token}` };
       try {
-        const [rRes, pRes, subRes, cRes] = await Promise.all([
+        const [rRes, pRes, subRes, cRes, oltRes, sigRes] = await Promise.all([
           fetch('/api/routers',     { headers: h }),
           fetch('/api/profiles',    { headers: h }),
           fetch('/api/subscribers', { headers: h }),
-          fetch('/api/cards',       { headers: h })
+          fetch('/api/cards',       { headers: h }),
+          fetch('/api/olt',         { headers: h }),
+          fetch('/api/olt/signals/all', { headers: h })
         ]);
         if (rRes.ok)   setRouters(await rRes.json());
         if (pRes.ok)   setProfiles(await pRes.json());
@@ -212,6 +246,8 @@ export const SystemProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           setSubscribers(Array.isArray(d) ? d : (d.data || []));
         }
         if (cRes.ok)   setCards(await cRes.json());
+        if (oltRes.ok) setOltDevices(await oltRes.json());
+        if (sigRes.ok) setOnuSignals(await sigRes.json());
       } catch { /* silent */ }
     }, 300000);
 
@@ -943,6 +979,8 @@ export const SystemProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         cards,
         sessions,
         logs,
+        oltDevices,
+        onuSignals,
         currency,
         setCurrency: updateCurrency,
         terminalScript,
@@ -972,7 +1010,9 @@ export const SystemProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         triggerMockConnection,
         addLog,
         clearLogs,
-        stats
+        stats,
+        theme,
+        setTheme
       }}
     >
       {children}

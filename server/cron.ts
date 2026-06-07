@@ -3,6 +3,7 @@ import https from 'https';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import { fetchOltSignals } from './vsol';
 
 export function startCronJobs(db: any, decrypt: (s: string) => string): void {
   console.log('[SuperSAS Cron] Initializing periodic subscriber expiry checker...');
@@ -533,6 +534,63 @@ export function startCronJobs(db: any, decrypt: (s: string) => string): void {
   // Trigger once shortly on boot and then periodically
   setTimeout(runAutoWhatsAppAlertsJob, 15000); 
   setInterval(runAutoWhatsAppAlertsJob, 3 * 60 * 60 * 1000); // Check every 3 hours
+
+  // مزامنة إشارات GPON كل 5 دقائق — قراءة فقط
+  setInterval(async () => {
+    try {
+      const olts = db.prepare(
+        "SELECT * FROM olt_devices WHERE status != 'disabled' AND id != 'olt-dummy'"
+      ).all() as any[];
+
+      for (const olt of olts) {
+        try {
+          const decryptedPassword = decrypt(olt.password);
+          const signals = await fetchOltSignals({
+            ip: olt.ip,
+            port: olt.port,
+            username: olt.username,
+            password: decryptedPassword
+          });
+
+          if (signals.length === 0) continue;
+
+          // Add UNIQUE constraint helper — check if constraint exists, use replace pattern
+          const upsertMany = db.transaction((items: any[]) => {
+            for (const s of items) {
+              const existingId = (db.prepare(
+                'SELECT id FROM onu_signals WHERE oltId = ? AND oltPort = ? AND onuIndex = ?'
+              ).get(olt.id, s.oltPort, s.onuIndex) as any)?.id;
+
+              const id = existingId || `${olt.id}-${s.oltPort}-${s.onuIndex}`.replace(/\//g, '-');
+
+              db.prepare(`
+                INSERT OR REPLACE INTO onu_signals
+                  (id, oltId, oltPort, onuIndex, subscriberId, onuSerial, rxPower, txPower, distance, status, lastUpdated)
+                VALUES (?, ?, ?, ?, (SELECT subscriberId FROM onu_signals WHERE id = ?), ?, ?, ?, ?, ?, datetime('now'))
+              `).run(id, olt.id, s.oltPort, s.onuIndex, id, s.onuSerial, s.rxPower, s.txPower, s.distance, s.status);
+            }
+          });
+
+          upsertMany(signals);
+
+          db.prepare(
+            "UPDATE olt_devices SET status = 'online', lastSync = datetime('now') WHERE id = ?"
+          ).run(olt.id);
+
+          console.log(`[OLT Sync] ✅ ${olt.name}: ${signals.length} ONU`);
+        } catch (err: any) {
+          console.error(`[OLT Sync] ⚠️ خطأ في ${olt.name}:`, err.message);
+          db.prepare(
+            "UPDATE olt_devices SET status = 'error' WHERE id = ?"
+          ).run(olt.id);
+        }
+      }
+    } catch (err: any) {
+      console.error('[OLT Sync] خطأ عام:', err.message);
+    }
+  }, 5 * 60 * 1000);
+
+  console.log('[OLT Sync] مزامنة إشارات GPON كل 5 دقائق — قراءة فقط');
 
   scheduleDailyBackup();
 }

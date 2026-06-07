@@ -14,6 +14,7 @@ import { requireAdminAuth, verifyAdminLogin, generateToken, AdminPayload } from 
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import { startCronJobs } from './server/cron';
+import { fetchOltSignals, testOltConnection } from './server/vsol';
 
 dotenv.config();
 
@@ -954,6 +955,285 @@ async function startServer() {
       }
     } catch (error: any) {
       res.status(500).json({ error: 'عطل داخلي في خادم الإرسال.', details: error.message });
+    }
+  });
+
+  // ==========================================
+  // 🌐 OLT DEVICES & ONU GPON MONITORING (READ-ONLY)
+  // ==========================================
+
+  // GET /api/olt
+  app.get('/api/olt', (req, res) => {
+    try {
+      const rows = db.prepare('SELECT * FROM olt_devices ORDER BY createdAt DESC').all() as any[];
+      const safeRows = rows.map(r => ({
+        ...r,
+        password: '••••••••'
+      }));
+      res.json(safeRows);
+    } catch (error: any) {
+      res.status(500).json({ error: 'حدث خطأ أثناء استرجاع أجهزة OLT.', details: error.message });
+    }
+  });
+
+  // POST /api/olt
+  app.post('/api/olt', (req, res) => {
+    try {
+      const { name, ip, port, username, password, model } = req.body;
+      if (!name || !ip || !username) {
+        return res.status(400).json({ error: 'الاسم، عنوان IP، واسم المستخدم حقول مطلوبة.' });
+      }
+
+      const id = 'olt-' + Date.now() + Math.random().toString(36).substring(2, 6);
+      const encryptedPassword = encrypt(password || '');
+
+      db.prepare(`
+        INSERT INTO olt_devices (id, name, ip, port, username, password, model, status, lastSync)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, null)
+      `).run(
+        id,
+        name,
+        ip,
+        Number(port) || 22,
+        username,
+        encryptedPassword,
+        model || 'VSOL V1600G1',
+        'disconnected'
+      );
+
+      logToSql('system', 'success', `تم إضافة جهاز OLT جديد: ${name}`, `العنوان: ${ip}:${port || 22}`);
+      res.status(201).json({ id, name, ip, port: port || 22, username, model: model || 'VSOL V1600G1', status: 'disconnected', password: '••••••••' });
+    } catch (error: any) {
+      res.status(500).json({ error: 'فشل إضافة جهاز OLT.', details: error.message });
+    }
+  });
+
+  // PUT /api/olt/:id
+  app.put('/api/olt/:id', (req, res) => {
+    try {
+      const { id } = req.params;
+      const { name, ip, port, username, password, model } = req.body;
+
+      if (!name || !ip || !username) {
+        return res.status(400).json({ error: 'الاسم، عنوان IP، واسم المستخدم حقول مطلوبة.' });
+      }
+
+      const existing = db.prepare('SELECT password FROM olt_devices WHERE id = ?').get(id) as any;
+      if (!existing) {
+        return res.status(404).json({ error: 'جهاز OLT غير موجود.' });
+      }
+
+      const finalPassword = (password && password !== '••••••••') ? encrypt(password) : existing.password;
+
+      db.prepare(`
+        UPDATE olt_devices
+        SET name = ?, ip = ?, port = ?, username = ?, password = ?, model = ?
+        WHERE id = ?
+      `).run(
+        name,
+        ip,
+        Number(port) || 22,
+        username,
+        finalPassword,
+        model || 'VSOL V1600G1',
+        id
+      );
+
+      logToSql('system', 'info', `تم تعديل جهاز OLT: ${name}`, `تعديل البيانات الأساسية`);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: 'فشل تعديل جهاز OLT.', details: error.message });
+    }
+  });
+
+  // DELETE /api/olt/:id
+  app.delete('/api/olt/:id', (req, res) => {
+    try {
+      const { id } = req.params;
+      db.prepare('DELETE FROM olt_devices WHERE id = ?').run(id);
+      logToSql('system', 'warning', `تم حذف جهاز OLT معرف: ${id}`, 'تم حذف السجل وإشارات ONU التابعة له تلقائياً');
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: 'فشل حذف جهاز OLT.', details: error.message });
+    }
+  });
+
+  // POST /api/olt/:id/test
+  app.post('/api/olt/:id/test', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const olt = db.prepare('SELECT * FROM olt_devices WHERE id = ?').get(id) as any;
+      if (!olt) {
+        return res.status(404).json({ error: 'جهاز OLT غير موجود.' });
+      }
+
+      if (id === 'olt-dummy') {
+        db.prepare("UPDATE olt_devices SET status = 'online' WHERE id = ?").run(id);
+        return res.json({ success: true, message: 'تم الاتصال بنجاح بالجهاز التجريبي (محاكاة آمنة).' });
+      }
+
+      const decryptedPassword = decrypt(olt.password);
+      const testResult = await testOltConnection({
+        ip: olt.ip,
+        port: Number(olt.port) || 22,
+        username: olt.username,
+        password: decryptedPassword
+      });
+
+      const newStatus = testResult.success ? 'online' : 'error';
+      db.prepare('UPDATE olt_devices SET status = ? WHERE id = ?').run(newStatus, id);
+
+      res.json(testResult);
+    } catch (error: any) {
+      res.status(500).json({ error: 'خطأ أثناء اختبار الاتصال.', details: error.message });
+    }
+  });
+
+  // POST /api/olt/:id/sync
+  app.post('/api/olt/:id/sync', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const olt = db.prepare('SELECT * FROM olt_devices WHERE id = ?').get(id) as any;
+      if (!olt) {
+        return res.status(404).json({ error: 'جهاز OLT غير موجود.' });
+      }
+
+      if (id === 'olt-dummy') {
+        db.prepare("UPDATE olt_devices SET status = 'online', lastSync = datetime('now') WHERE id = ?").run(id);
+        logToSql('system', 'success', `مزامنة يدوية لجهاز OLT التجريبي: ${olt.name}`, `تمت مزامنة 5 حسابات ONU محاكاة بنجاح`);
+        return res.json({ synced: 5, total: 5 });
+      }
+
+      const decryptedPassword = decrypt(olt.password);
+      const signals = await fetchOltSignals({
+        ip: olt.ip,
+        port: Number(olt.port) || 22,
+        username: olt.username,
+        password: decryptedPassword
+      });
+
+      if (signals.length === 0) {
+        db.prepare("UPDATE olt_devices SET status = 'error' WHERE id = ?").run(id);
+        return res.status(502).json({ error: 'فشل جلب الإشارات من جهاز OLT. تأكد من إعدادات الاتصال والشبكة.' });
+      }
+
+      // Sync logic transaction
+      const syncTx = db.transaction((list: any[]) => {
+        for (const s of list) {
+          const existingId = (db.prepare(
+            'SELECT id FROM onu_signals WHERE oltId = ? AND oltPort = ? AND onuIndex = ?'
+          ).get(id, s.oltPort, s.onuIndex) as any)?.id;
+
+          const signalId = existingId || `${id}-${s.oltPort}-${s.onuIndex}`.replace(/\//g, '-');
+
+          db.prepare(`
+            INSERT OR REPLACE INTO onu_signals
+              (id, oltId, oltPort, onuIndex, subscriberId, onuSerial, rxPower, txPower, distance, status, lastUpdated)
+            VALUES (?, ?, ?, ?, (SELECT subscriberId FROM onu_signals WHERE id = ?), ?, ?, ?, ?, ?, datetime('now'))
+          `).run(
+            signalId,
+            id,
+            s.oltPort,
+            s.onuIndex,
+            signalId, // to preserve existing subscriberId link
+            s.onuSerial,
+            s.rxPower,
+            s.txPower,
+            s.distance,
+            s.status
+          );
+        }
+      });
+
+      syncTx(signals);
+
+      db.prepare("UPDATE olt_devices SET status = 'online', lastSync = datetime('now') WHERE id = ?").run(id);
+
+      logToSql('system', 'success', `مزامنة يدوية لجهاز OLT: ${olt.name}`, `تم مزامنة ${signals.length} حساب ONU بنجاح`);
+
+      res.json({ synced: signals.length, total: signals.length });
+    } catch (error: any) {
+      res.status(500).json({ error: 'فشل مزامنة جهاز OLT.', details: error.message });
+    }
+  });
+
+  // GET /api/olt/:id/signals
+  app.get('/api/olt/:id/signals', (req, res) => {
+    try {
+      const { id } = req.params;
+      const rows = db.prepare(`
+        SELECT s.*, sub.fullName as subscriberName, sub.username as subscriberUsername
+        FROM onu_signals s
+        LEFT JOIN subscribers sub ON s.subscriberId = sub.id
+        WHERE s.oltId = ?
+        ORDER BY s.oltPort ASC, s.onuIndex ASC
+      `).all(id) as any[];
+
+      const mapQuality = (rx: number | null, status: string) => {
+        if (status === 'offline' || rx === null) return 'offline';
+        if (rx >= -20) return 'excellent';
+        if (rx >= -25) return 'good';
+        if (rx >= -27) return 'warning';
+        return 'critical';
+      };
+
+      const enriched = rows.map(r => ({
+        ...r,
+        signalQuality: mapQuality(r.rxPower, r.status)
+      }));
+
+      res.json(enriched);
+    } catch (error: any) {
+      res.status(500).json({ error: 'فشل استرجاع إشارات ONU.', details: error.message });
+    }
+  });
+
+  // GET /api/olt/signals/all
+  app.get('/api/olt/signals/all', (req, res) => {
+    try {
+      const rows = db.prepare(`
+        SELECT s.*, sub.fullName as subscriberName, sub.username as subscriberUsername, o.name as oltName
+        FROM onu_signals s
+        LEFT JOIN subscribers sub ON s.subscriberId = sub.id
+        LEFT JOIN olt_devices o ON s.oltId = o.id
+        ORDER BY o.name ASC, s.oltPort ASC, s.onuIndex ASC
+      `).all() as any[];
+
+      const mapQuality = (rx: number | null, status: string) => {
+        if (status === 'offline' || rx === null) return 'offline';
+        if (rx >= -20) return 'excellent';
+        if (rx >= -25) return 'good';
+        if (rx >= -27) return 'warning';
+        return 'critical';
+      };
+
+      const enriched = rows.map(r => ({
+        ...r,
+        signalQuality: mapQuality(r.rxPower, r.status)
+      }));
+
+      res.json(enriched);
+    } catch (error: any) {
+      res.status(500).json({ error: 'فشل استرجاع جميع إشارات ONU.', details: error.message });
+    }
+  });
+
+  // PUT /api/olt/signals/:signalId/link
+  app.put('/api/olt/signals/:signalId/link', (req, res) => {
+    try {
+      const { signalId } = req.params;
+      const { subscriberId } = req.body;
+
+      db.prepare(`
+        UPDATE onu_signals
+        SET subscriberId = ?
+        WHERE id = ?
+      `).run(subscriberId || null, signalId);
+
+      const updated = db.prepare('SELECT * FROM onu_signals WHERE id = ?').get(signalId) as any;
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ error: 'فشل ربط جهاز ONU بالمشترك.', details: error.message });
     }
   });
 

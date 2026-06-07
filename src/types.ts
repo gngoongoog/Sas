@@ -97,3 +97,34 @@ export interface SystemAlert {
   sentToTelegram: boolean;
   status: 'unread' | 'resolved';
 }
+
+export interface OltDevice {
+  id: string;
+  name: string;
+  ip: string;
+  port: number;
+  username: string;
+  password?: string;
+  model: string;
+  status: 'online' | 'offline' | 'disconnected' | 'error';
+  lastSync?: string;
+  createdAt?: string;
+}
+
+export interface OnuSignal {
+  id: string;
+  oltId: string;
+  oltPort: string;
+  onuIndex: string;
+  subscriberId?: string;
+  onuSerial: string;
+  rxPower: number | null;
+  txPower: number | null;
+  distance: number | null;
+  status: 'active' | 'offline';
+  lastUpdated: string;
+  subscriberName?: string;
+  subscriberUsername?: string;
+  oltName?: string;
+  signalQuality?: 'excellent' | 'good' | 'warning' | 'critical' | 'offline';
+}

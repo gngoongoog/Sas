@@ -23,7 +23,10 @@ import {
   Code,
   LifeBuoy,
   FileArchive,
-  Send
+  Send,
+  Sun,
+  Moon,
+  Palette
 } from 'lucide-react';
 
 interface BackupFile {
@@ -34,7 +37,7 @@ interface BackupFile {
 }
 
 export function SystemSettings() {
-  const { token, currency, setCurrency, refreshAll } = useSystem();
+  const { token, currency, setCurrency, refreshAll, theme, setTheme } = useSystem();
   
   // App settings state
   const [backupEnabled, setBackupEnabled] = useState(false);
@@ -372,25 +375,164 @@ export function SystemSettings() {
     <div className="space-y-6 text-right" dir="rtl" id="system-settings-view">
       
       {/* Visual Elegant Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-bg-card p-6 rounded-2xl border border-border-main shadow-xs">
         <div>
           <div className="flex items-center gap-2 text-blue-600 mb-1">
             <SettingsIcon className="w-5 h-5" />
             <span className="text-xs font-bold font-mono tracking-widest uppercase">System Control Unit</span>
           </div>
-          <h1 className="text-xl font-bold font-sans text-slate-900">إعدادات النظام وأمان البيانات</h1>
-          <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+          <h1 className="text-xl font-bold font-sans text-text-main">إعدادات النظام وأمان البيانات</h1>
+          <p className="text-xs text-text-desc mt-1 leading-relaxed">
             قم بالتحكم بخيارات التصدير المحلي، ومراقبة النسخ الاحتياطية الدورية لقاعدة بيانات المشتركين وسيرفرات الميكروتيك لضمان عدم ضياع الكروت أو الحسابات.
           </p>
         </div>
         <div className="flex items-center gap-3">
           <button 
             onClick={() => { fetchBackupSettings(); fetchBackupList(); }} 
-            className="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 rounded-xl transition-all cursor-pointer border border-slate-200"
+            className="p-2.5 bg-black/5 hover:bg-black/10 text-text-main hover:text-text-main rounded-xl transition-all cursor-pointer border border-border-main"
             title="تحديث القوائم"
           >
             <RefreshCw className="w-4 h-4 animate-spin-hover" />
           </button>
+        </div>
+      </div>
+
+      {/* Theme Control Center Card */}
+      <div className="bg-bg-card p-6 rounded-2xl border border-border-main shadow-xs space-y-6 transition-colors duration-300">
+        <div>
+          <div className="flex items-center gap-2 text-primary-main mb-1">
+            <Palette className="w-5 h-5" />
+            <span className="text-xs font-bold font-mono tracking-widest uppercase">Personalization & Theme Hub</span>
+          </div>
+          <h2 className="text-base font-bold text-text-main font-sans">تخصيص مظهر لوحة التحكم (ألوان النظام)</h2>
+          <p className="text-xs text-text-desc leading-relaxed">
+            اختر نمط الألوان المفضل لديك والوضع البصري المناسب لعينك. يتم تخزين خيارك بأمان في المتصفح ولا يتغير حتى تقوم بتغييره يدوياً.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
+          {/* Light Mode */}
+          <div 
+            onClick={() => setTheme('light')}
+            className={`p-4 rounded-xl border-2 transition-all cursor-pointer flex flex-col justify-between space-y-3 relative overflow-hidden ${
+              theme === 'light' 
+                ? 'border-blue-600 bg-blue-50/20 shadow-xs' 
+                : 'border-slate-200 bg-white hover:border-slate-350'
+            }`}
+          >
+            <div className="flex justify-between items-start">
+              <span className="p-1.5 bg-amber-50 text-amber-500 rounded-lg">
+                <Sun className="w-4 h-4" />
+              </span>
+              {theme === 'light' && (
+                <span className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-pulse" />
+              )}
+            </div>
+            <div>
+              <h3 className="text-xs font-bold text-slate-950 font-sans">الوضع المضيء الكلاسيكي</h3>
+              <p className="text-[10px] text-slate-500 mt-1 leading-normal">الوضع الأساسي الناصع بالخلفية البيضاء الكلاسيكية والرموز الزرقاء المريحة.</p>
+            </div>
+          </div>
+
+          {/* Dark Mode */}
+          <div 
+            onClick={() => setTheme('dark')}
+            className={`p-4 rounded-xl border-2 transition-all cursor-pointer flex flex-col justify-between space-y-3 relative overflow-hidden bg-slate-900 border-slate-800`}
+            style={{ borderColor: theme === 'dark' ? '#3b82f6' : undefined }}
+          >
+            <div className="flex justify-between items-start">
+              <span className="p-1.5 bg-slate-850 text-slate-300 rounded-lg">
+                <Moon className="w-4 h-4" />
+              </span>
+              {theme === 'dark' && (
+                <span className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />
+              )}
+            </div>
+            <div>
+              <h3 className="text-xs font-bold text-slate-100 font-sans">الوضع الداكن الليلي</h3>
+              <p className="text-[10px] text-slate-400 mt-1 leading-normal">يحمي عينيك في ظروف الإضاءة الخافتة ويمتاز بخلفية سوداء ورموز ناعمة.</p>
+            </div>
+          </div>
+
+          {/* Blue Mode */}
+          <div 
+            onClick={() => setTheme('blue')}
+            className={`p-4 rounded-xl border-2 transition-all cursor-pointer flex flex-col justify-between space-y-3 relative overflow-hidden text-white`}
+            style={{ backgroundColor: '#1e293b', borderColor: theme === 'blue' ? '#0ea5e9' : '#334155' }}
+          >
+            <div className="flex justify-between items-start">
+              <span className="p-1.5 bg-slate-800 text-sky-400 rounded-lg">
+                <Palette className="w-4 h-4" />
+              </span>
+              {theme === 'blue' && (
+                <span className="w-2.5 h-2.5 rounded-full bg-sky-450 animate-pulse" />
+              )}
+            </div>
+            <div>
+              <h3 className="text-xs font-bold text-sky-200 font-sans">وضع الأزرق الكحلي الزاهي</h3>
+              <p className="text-[10px] text-slate-300 mt-1 leading-normal">خلفية كوزميك زرقاء مريحة للعين وممتازة للتصفح المطول للشبكة والروترات.</p>
+            </div>
+          </div>
+
+          {/* Purple Mode */}
+          <div 
+            onClick={() => setTheme('purple')}
+            className={`p-4 rounded-xl border-2 transition-all cursor-pointer flex flex-col justify-between space-y-3 relative overflow-hidden text-white`}
+            style={{ backgroundColor: '#312e81', borderColor: theme === 'purple' ? '#c084fc' : '#4338ca' }}
+          >
+            <div className="flex justify-between items-start">
+              <span className="p-1.5 bg-indigo-950 text-purple-300 rounded-lg">
+                <Sparkles className="w-4 h-4" />
+              </span>
+              {theme === 'purple' && (
+                <span className="w-2.5 h-2.5 rounded-full bg-purple-400 animate-pulse" />
+              )}
+            </div>
+            <div>
+              <h3 className="text-xs font-bold text-purple-200 font-sans">الوضع البنفسجي الساحر</h3>
+              <p className="text-[10px] text-purple-300/80 mt-1 leading-normal">تنسيق مذهل ملائم للشبكات الحديثة لإضافة لمسة فنية وطابع كبار الشخصيات.</p>
+            </div>
+          </div>
+
+          {/* Emerald Mode */}
+          <div 
+            onClick={() => setTheme('emerald')}
+            className={`p-4 rounded-xl border-2 transition-all cursor-pointer flex flex-col justify-between space-y-3 relative overflow-hidden`}
+            style={{ backgroundColor: '#fff', borderColor: theme === 'emerald' ? '#059669' : '#e2e8f0' }}
+          >
+            <div className="flex justify-between items-start">
+              <span className="p-1.5 bg-emerald-50 text-emerald-600 rounded-lg">
+                <span className="block w-2.5 h-2.5 bg-emerald-600 rounded-full animate-bounce"></span>
+              </span>
+              {theme === 'emerald' && (
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 animate-pulse" />
+              )}
+            </div>
+            <div>
+              <h3 className="text-xs font-bold text-emerald-950 font-sans">وضع الزمرد والمينت</h3>
+              <p className="text-[10px] text-emerald-700 mt-1 leading-normal">وضع هادئ مستوحى من الطبيعة للتركيز الكامل وتحسين أداء فريق العمل البصري.</p>
+            </div>
+          </div>
+
+          {/* Brown Mode */}
+          <div 
+            onClick={() => setTheme('brown')}
+            className={`p-4 rounded-xl border-2 transition-all cursor-pointer flex flex-col justify-between space-y-3 relative overflow-hidden`}
+            style={{ backgroundColor: '#faf5ee', borderColor: theme === 'brown' ? '#b45309' : '#f1e2cd' }}
+          >
+            <div className="flex justify-between items-start">
+              <span className="p-1.5 bg-amber-50 text-amber-700 rounded-lg">
+                <Palette className="w-4 h-4" />
+              </span>
+              {theme === 'brown' && (
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-700 animate-pulse" />
+              )}
+            </div>
+            <div>
+              <h3 className="text-xs font-bold text-amber-950 font-sans">وضع البني الدافئ الهادئ</h3>
+              <p className="text-[10px] text-amber-900 mt-1 leading-normal">وضع دافئ ومريح جداً للعين بلون الهيل والبيج الفاخر لتصفح ممتع وممتاز.</p>
+            </div>
+          </div>
         </div>
       </div>
 
