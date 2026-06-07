@@ -693,13 +693,14 @@ async function startServer() {
   app.get('/api/settings/backup-json/export', requireAdminAuth, (req, res) => {
     try {
       const subscribers = db.prepare('SELECT * FROM subscribers').all() as any[];
+      const safeSubscribers = (subscribers as any[]).map((s: any) => ({ ...s, password: '••••••••' }));
       const routers = db.prepare('SELECT * FROM routers').all() as any[];
       const profiles = db.prepare('SELECT * FROM profiles').all() as any[];
       
       const exportData = {
         exportedAt: new Date().toISOString(),
         generator: 'SuperSAS v4 Database Export',
-        subscribers,
+        subscribers: safeSubscribers,
         routers,
         profiles
       };
@@ -746,13 +747,14 @@ async function startServer() {
   app.get('/api/settings/backup-json/zip-export', requireAdminAuth, async (req, res) => {
     try {
       const subscribers = db.prepare('SELECT * FROM subscribers').all() as any[];
+      const safeSubscribers = (subscribers as any[]).map((s: any) => ({ ...s, password: '••••••••' }));
       const routers = db.prepare('SELECT * FROM routers').all() as any[];
       const profiles = db.prepare('SELECT * FROM profiles').all() as any[];
 
       const exportData = {
         exportedAt: new Date().toISOString(),
         generator: 'SuperSAS v4 compressed ZIP database backup',
-        subscribers,
+        subscribers: safeSubscribers,
         routers,
         profiles
       };
@@ -963,7 +965,7 @@ async function startServer() {
   // ==========================================
 
   // GET /api/olt
-  app.get('/api/olt', (req, res) => {
+  app.get('/api/olt', requireAdminAuth, (req, res) => {
     try {
       const rows = db.prepare('SELECT * FROM olt_devices ORDER BY createdAt DESC').all() as any[];
       const safeRows = rows.map(r => ({
@@ -977,7 +979,7 @@ async function startServer() {
   });
 
   // POST /api/olt
-  app.post('/api/olt', (req, res) => {
+  app.post('/api/olt', requireAdminAuth, (req, res) => {
     try {
       const { name, ip, port, username, password, model } = req.body;
       if (!name || !ip || !username) {
@@ -1009,7 +1011,7 @@ async function startServer() {
   });
 
   // PUT /api/olt/:id
-  app.put('/api/olt/:id', (req, res) => {
+  app.put('/api/olt/:id', requireAdminAuth, (req, res) => {
     try {
       const { id } = req.params;
       const { name, ip, port, username, password, model } = req.body;
@@ -1047,7 +1049,7 @@ async function startServer() {
   });
 
   // DELETE /api/olt/:id
-  app.delete('/api/olt/:id', (req, res) => {
+  app.delete('/api/olt/:id', requireAdminAuth, (req, res) => {
     try {
       const { id } = req.params;
       db.prepare('DELETE FROM olt_devices WHERE id = ?').run(id);
@@ -1059,7 +1061,7 @@ async function startServer() {
   });
 
   // POST /api/olt/:id/test
-  app.post('/api/olt/:id/test', async (req, res) => {
+  app.post('/api/olt/:id/test', requireAdminAuth, async (req, res) => {
     try {
       const { id } = req.params;
       const olt = db.prepare('SELECT * FROM olt_devices WHERE id = ?').get(id) as any;
@@ -1090,7 +1092,7 @@ async function startServer() {
   });
 
   // POST /api/olt/:id/sync
-  app.post('/api/olt/:id/sync', async (req, res) => {
+  app.post('/api/olt/:id/sync', requireAdminAuth, async (req, res) => {
     try {
       const { id } = req.params;
       const olt = db.prepare('SELECT * FROM olt_devices WHERE id = ?').get(id) as any;
@@ -1158,7 +1160,7 @@ async function startServer() {
   });
 
   // GET /api/olt/:id/signals
-  app.get('/api/olt/:id/signals', (req, res) => {
+  app.get('/api/olt/:id/signals', requireAdminAuth, (req, res) => {
     try {
       const { id } = req.params;
       const rows = db.prepare(`
@@ -1189,7 +1191,7 @@ async function startServer() {
   });
 
   // GET /api/olt/signals/all
-  app.get('/api/olt/signals/all', (req, res) => {
+  app.get('/api/olt/signals/all', requireAdminAuth, (req, res) => {
     try {
       const rows = db.prepare(`
         SELECT s.*, sub.fullName as subscriberName, sub.username as subscriberUsername, o.name as oltName
@@ -1219,7 +1221,7 @@ async function startServer() {
   });
 
   // PUT /api/olt/signals/:signalId/link
-  app.put('/api/olt/signals/:signalId/link', (req, res) => {
+  app.put('/api/olt/signals/:signalId/link', requireAdminAuth, (req, res) => {
     try {
       const { signalId } = req.params;
       const { subscriberId } = req.body;
